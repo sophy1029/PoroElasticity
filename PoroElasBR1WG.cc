@@ -29,6 +29,7 @@
 #include <deal.II/grid/tria_iterator.h>
 #include <deal.II/dofs/dof_handler.h>
 #include <deal.II/dofs/dof_accessor.h>
+#include <deal.II/dofs/dof_renumbering.h>
 #include <deal.II/dofs/dof_tools.h>
 #include <deal.II/fe/fe_dgq.h>
 #include <deal.II/fe/fe_system.h>
@@ -39,7 +40,7 @@
 #include <deal.II/numerics/data_out.h>
 #include <deal.II/numerics/data_out_faces.h>
 #include <deal.II/fe/fe_raviart_thomas.h>
-#include <deal.II/fe/fe_bernardi_raugel.h>
+//#include <deal.II/fe/fe_bernardi_raugel.h>
 #include <deal.II/grid/grid_generator.h>
 #include <deal.II/grid/grid_tools.h>
 #include <deal.II/grid/grid_out.h>
@@ -89,11 +90,167 @@ private:
   BlockVector<double> old_solution;
   BlockVector<double> system_rhs;
 
-  double time, time_step;
+  double       time;
+  double       time_step;
   unsigned int timestep_number;
-  const double theta;
 };
 
+// @sect3{Right hand side, boundary values, and exact solution}
+// Coefficient matrix $\mathbf{K}$ is the identity matrix as a test example.
+template <int dim>
+class Coefficient : public TensorFunction<2, dim>
+{
+public:
+  Coefficient()
+    : TensorFunction<2, dim>()
+  {}
+  virtual void value_list(const std::vector<Point<dim>> &points,
+                          std::vector<Tensor<2, dim>> &  values) const override;
+};
+
+template <int dim>
+void Coefficient<dim>::value_list(const std::vector<Point<dim>> &points,
+                                  std::vector<Tensor<2, dim>> &  values) const
+{
+  Assert(points.size() == values.size(),
+         ExcDimensionMismatch(points.size(), values.size()));
+  for (unsigned int p = 0; p < points.size(); ++p)
+    {
+      values[p].clear();
+      for (unsigned int d = 0; d < dim; ++d)
+        values[p][d][d] = 1;
+    }
+}
+
+// Exact solutions, u and p
+template <int dim>
+class DisplacementSolution : public Function<dim>
+{
+public:
+  DisplacementSolution () : Function<dim>(dim) {}
+  virtual void value (const Point<dim>   &p) const;
+};
+
+template <int dim>
+void DisplacementSolution<dim>::value (const Point<dim>   &p) const
+{
+  value(0) = -1./(4*M_PI)*cos(2*M_PI*p[0])*sin(2*M_PI*p[1])*sin(2*M_PI*this->get_time());
+  value(1) = -1./(4*M_PI)*sin(2*M_PI*p[0])*cos(2*M_PI*p[1])*sin(2*M_PI*this->get_time());
+
+}
+
+template <int dim>
+class PressureSolution : public Function<dim>
+{
+public:
+	PressureSolution()
+    : Function<dim>(1)
+  {}
+  virtual double value(const Point<dim> &p, const unsigned int) const;
+};
+
+template <int dim>
+double PressureSolution<dim>::value(const Point<dim> &p, const unsigned int) const
+{
+  double return_value = 0;
+  return_value        = sin(2*M_PI*p[0])*sin(2*M_PI*p[1])*sin(2*M_PI*this->get_time());
+  return return_value;
+}
+
+// Right hand side, f and S
+template <int dim>
+class FluidRightHandSide : public Function<dim>
+{
+public:
+	FluidRightHandSide()
+    : Function<dim>(1)
+  {}
+  virtual double value(const Point<dim> & p,
+                       const unsigned int component = 0) const;
+};
+
+template <int dim>
+double FluidRightHandSide<dim>::value(const Point<dim> &p,
+                                 const unsigned int /*component*/) const
+{
+  double return_value = 0.0;
+  return_value        = 8*M_PI*M_PI*sin(2*M_PI*p[0])*sin(2*M_PI*p[1])*sin(2*M_PI*this->get_time())+
+		                2*M_PI*sin(2*M_PI*p[0])*sin(2*M_PI*p[1])*cos(2*M_PI*this->get_time());
+  return return_value;
+}
+
+template <int dim>
+  class BodyRightHandSide : public Function<dim>
+  {
+  public:
+	BodyRightHandSide () : Function<dim>(dim) {}
+
+    virtual void vector_value (const Point<dim> &p,
+                               Vector<double>   &value) const;
+  };
+template <int dim>
+  void
+  BodyRightHandSide<dim>::vector_value (const Point<dim> &p,
+                                    Vector<double>   &values) const
+  {
+    Assert (values.size() == dim,
+            ExcDimensionMismatch (values.size(), dim));
+
+    values(0) = -4*M_PI*cos(2*M_PI*p[0])*sin(2*M_PI*p[1])*sin(2*M_PI*this->get_time());
+    values(1) = -4*M_PI*sin(2*M_PI*p[0])*cos(2*M_PI*p[1])*sin(2*M_PI*this->get_time());
+  }
+
+// Displacement D.B.C., pressure is N.B.C., calculated later(?)
+template <int dim>
+  class DisplacementBoundary : public Function<dim>
+  {
+  public:
+	DisplacementBoundary () : Function<dim>(dim) {}
+
+    virtual void vector_value (const Point<dim> &p,
+                               Vector<double>   &value) const;
+  };
+template <int dim>
+  void
+  DisplacementBoundary<dim>::vector_value (const Point<dim> &p,
+                                    Vector<double>   &values) const
+  {
+    Assert (values.size() == dim,
+            ExcDimensionMismatch (values.size(), dim));
+
+    values(0) = -1./(4*M_PI)*cos(2*M_PI*p[0])*sin(2*M_PI*p[1])*sin(2*M_PI*this->get_time());
+    values(1) = -1./(4*M_PI)*sin(2*M_PI*p[0])*cos(2*M_PI*p[1])*sin(2*M_PI*this->get_time());
+  }
+
+// Initial values, u(0,x)=0 and p(0,x)=0
+template <int dim>
+  class InitialValues : public Function<dim>
+  {
+  public:
+    InitialValues () : Function<dim>(dim+2) {}  //?? is it dim+2?
+
+    virtual double value (const Point<dim>   &p,
+                          const unsigned int  component = 0) const;
+
+    virtual void vector_value (const Point<dim> &p,
+                               Vector<double>   &value) const;
+  };
+
+  template <int dim>
+  double
+  InitialValues<dim>::value (const Point<dim>  &p,
+                             const unsigned int component ) const
+  {
+    return ZeroFunction<dim>(dim+2).value (p, component);
+  }
+
+  template <int dim>
+  void
+  InitialValues<dim>::vector_value (const Point<dim> &p,
+                                    Vector<double>   &values) const
+  {
+    ZeroFunction<dim>(dim+2).vector_value (p, values);
+  }
 // @sect3{WGDarcyEquation class implementation}
 
 // @sect4{WGDarcyEquation::WGDarcyEquation}
@@ -104,14 +261,14 @@ private:
    fe_rt (0),
    dof_handler_rt (triangulation), // for discrete weak gradient
 
-   fe (FE_BernardiRaugel<dim>(1),2,  // what's for dim? 1? 2(for vector =2)?
+//   fe (FE_BernardiRaugel<dim>(1),1,  // what's for dim? 1? 2?
+   fe (FE_RaviartThomas<dim>(0),1,
 	   FE_DGQ<dim>(0), 1,
 	   FE_FaceQ<dim>(0), 1),
 
    dof_handler (triangulation),
 
-   time_step (1./64), // what's time_step? need to set later, different from step-23
-   theta (1)   // need to check what's theta for implicit euler method
+   time_step (1./64) // what's time_step? need to set later, different from step-23
 
  {}
 
@@ -121,7 +278,7 @@ private:
  void PoroElasBR1WG<dim>::make_grid_and_dofs ()
  {
    GridGenerator::hyper_cube (triangulation, 0, 1);
-   triangulation.refine_global (2);
+   triangulation.refine_global (1);
 
    dof_handler_rt.distribute_dofs (fe_rt);
    dof_handler.distribute_dofs(fe);
@@ -196,7 +353,7 @@ private:
  {
    QGauss<dim>  quadrature_formula(fe_rt.degree+1);
    QGauss<dim-1>  face_quadrature_formula(fe_rt.degree+1);
-   const RightHandSide<dim> right_hand_side;
+//   const RightHandSide<dim> right_hand_side;
 
    // We define objects to evaluate values, gradients of shape functions at the quadrature points.
    // Since we need shape functions and normal vectors on faces, we need <code>FEFaceValues</code>.
@@ -206,11 +363,13 @@ private:
 
    FEValues<dim> fe_values (fe, quadrature_formula,
                               update_values   |
-                              update_quadrature_points | update_JxW_values);
+                              update_quadrature_points |  update_gradients |
+                              update_JxW_values);
 
    FEFaceValues<dim> fe_face_values (fe, face_quadrature_formula,
                                      update_values   | update_normal_vectors |
-                                     update_quadrature_points | update_JxW_values);
+                                     update_quadrature_points |
+                                     update_JxW_values);
 
    FEFaceValues<dim> fe_face_values_rt (fe_rt, face_quadrature_formula,
                                         update_values   | update_normal_vectors |
@@ -234,13 +393,13 @@ private:
    FullMatrix<double>   cell_matrix_rt (dofs_per_cell_rt,dofs_per_cell_rt);
    FullMatrix<double>   cell_matrix_F (dofs_per_cell,dofs_per_cell_rt);
    FullMatrix<double>   cell_matrix_C (dofs_per_cell,dofs_per_cell_rt);
-//   FullMatrix<double>   local_matrix (dofs_per_cell,dofs_per_cell);
-   FullMatrix<double>   local_matrix_DarcyStf (dofs_per_cell,dofs_per_cell);
-   FullMatrix<double>   local_matrix_DarcyMass (dofs_per_cell,dofs_per_cell);
-   FullMatrix<double>   local_matrix_Darcy(dofs_per_cell,dofs_per_cell);
-   FullMatrix<double>   local_matrix_ElasStrain (dofs_per_cell,dofs_per_cell);
-   FullMatrix<double>   local_matrix_DarcyElas (dofs_per_cell,dofs_per_cell);
-   FullMatrix<double>   local_matrix_ElasDarcy (dofs_per_cell,dofs_per_cell);
+   FullMatrix<double>   local_matrix (dofs_per_cell,dofs_per_cell);
+//   FullMatrix<double>   local_matrix_DarcyStf (dofs_per_cell,dofs_per_cell);
+//   FullMatrix<double>   local_matrix_DarcyMass (dofs_per_cell,dofs_per_cell);
+//   FullMatrix<double>   local_matrix_Darcy(dofs_per_cell,dofs_per_cell);
+//   FullMatrix<double>   local_matrix_ElasStrain (dofs_per_cell,dofs_per_cell);
+//   FullMatrix<double>   local_matrix_DarcyElas (dofs_per_cell,dofs_per_cell);
+//   FullMatrix<double>   local_matrix_ElasDarcy (dofs_per_cell,dofs_per_cell);
    FullMatrix<double>   cell_matrix_D (dofs_per_cell_rt,dofs_per_cell_rt);
    FullMatrix<double>   cell_matrix_E (dofs_per_cell_rt,dofs_per_cell_rt);
    Vector<double>       cell_rhs (dofs_per_cell);
@@ -249,9 +408,6 @@ private:
    const Coefficient<dim> coefficient;
    std::vector<Tensor<2,dim>> coefficient_values (n_q_points_rt);
 
-   // We need extractors to extract components of shape functions used for
-   // calculating pressures, @p interior will be used to approximate integrals
-   // defined in the interior, and @p face will be used to approximate integrals defined on faces.
    const FEValuesExtractors::Vector velocities (0); // this is for fe_rt velcocities.
    const FEValuesExtractors::Vector displacements (0); //
    const FEValuesExtractors::Scalar pressure_interior (dim); // this is for pressure
@@ -263,8 +419,6 @@ private:
    typename DoFHandler<dim>::active_cell_iterator
    cell_rt = dof_handler_rt.begin_active();
 
-   // Here, we will calculate cell matrices used to construct the local matrix on each cell.
-   // We need shape functions on the Raviart-Thomas space, so the loop is also defined on this space.
    for (; cell!=endc; ++cell,++cell_rt)
      {
 	   // On each cell, cell matrices are different, so in every loop, they need to be re-computed.
@@ -273,12 +427,13 @@ private:
        cell_matrix_rt = 0;
        cell_matrix_F = 0;
        cell_matrix_C = 0;
-       local_matrix_DarcyStf = 0;
-       local_matrix_DarcyMass = 0;
-       local_matrix_ElasStrain = 0;
-       local_matrix_DarcyElas = 0;
-       local_matrix_ElasDarcy = 0;
-       local_matrix_Darcy = 0;
+       local_matrix = 0;
+//       local_matrix_DarcyStf = 0;
+//       local_matrix_DarcyMass = 0;
+//       local_matrix_ElasStrain = 0;
+//       local_matrix_DarcyElas = 0;
+//       local_matrix_ElasDarcy = 0;
+//       local_matrix_Darcy = 0;
        cell_rhs = 0;
        coefficient.value_list (fe_values_rt.get_quadrature_points(),
                                coefficient_values);
@@ -304,12 +459,6 @@ private:
         }
        cell_matrix_rt.gauss_jordan();
 
-       // From the introduction, we know that the right hand side
-       // is an integral on faces minus an integral in the interior.
-       // Here, we approximate the negative of integral in interior.
-       // Each component of this matrix is the integral of product of the basis function of the polynomial space
-       // and divergence of the basis function of the Raviart-Thomas space.
-       // These basis functions are defined in interior.
    	   for (unsigned int q=0; q<n_q_points; ++q)
    	       {
    	         for (unsigned int i=0; i<dofs_per_cell; ++i)
@@ -324,11 +473,6 @@ private:
    	              }
    	        }
 
-   	 // Now, we approximate the integral on faces.
-   	 // Each component is the integral of product of basis function of the polynomial space
-   	 // and the dot product of the basis function of the Raviart-Thomas space and the normal vector.
-   	 // So this loop is over all the faces of the element.
-   	 // And we get the normal vector of each face from <code>FEFaceValues</code>.
        for (unsigned int face_n=0; face_n<GeometryInfo<dim>::faces_per_cell; ++face_n)
            {
            	   fe_face_values.reinit (cell,face_n);
@@ -352,111 +496,155 @@ private:
      // We calculate @p cell_matrix_C by doing matrix multiplication via <code>SparseMatrix::mmult</code>.
        cell_matrix_F.mmult(cell_matrix_C,cell_matrix_rt);
 
-     // In the local matrix of this element, component is
-     // $\int_{E} \mathbf{K} c_{ik} c_{jl} \mathbf{w}_k \cdot \mathbf{w}_l.$
-     // We have calculated coefficients $c$ from the previous step.
-     // And these basis functions $\mathbf{w}$ are defined in the interior.
-     // This is for Darcy stiff. matrix.
+
+     // Construct the local matrix.
        for (unsigned int q=0; q<n_q_points_rt; ++q)
            {
-	         for(unsigned int i = 0; i<dofs_per_cell; ++i)
-	            {
-		          for(unsigned int j = 0; j<dofs_per_cell; ++j)
-		             {
-			           for(unsigned int k = 0; k<dofs_per_cell_rt; ++k)
-			              {
-				            const Tensor<1,dim> phi_k_u = fe_values_rt[velocities].value (k, q);
-				            for(unsigned int l = 0; l<dofs_per_cell_rt; ++l)
-				               {
-					             const Tensor<1,dim> phi_l_u = fe_values_rt[velocities].value (l, q);
-					             local_matrix_DarcyStf(i,j) += coefficient_values[q]*cell_matrix_C[i][k]*cell_matrix_C[j][l]*
-							                                   phi_k_u*phi_l_u*
-							                                   fe_values_rt.JxW(q);
-				                }
-			               }
-		              }
-	             }
+       	     for(unsigned int i = 0; i<dofs_per_cell; ++i)
+       	        {
+       	    	const SymmetricTensor<2,dim> phi_i_symmgrad
+       	    	              = fe_values[displacements].symmetric_gradient (i,q);
+       	    	const double phi_i_div
+       	    	              = fe_values[displacements].divergence (i,q);
+       		     for(unsigned int j = 0; j<dofs_per_cell; ++j)
+       		        {
+       		    	const SymmetricTensor<2,dim> phi_j_symmgrad
+       		    	                  = fe_values[displacements].symmetric_gradient (j,q);
+       		    	const double phi_j_div
+       		    	                  = fe_values[displacements].divergence (j,q);
+       			       for(unsigned int k = 0; k<dofs_per_cell_rt; ++k)
+       			          {
+       				        const Tensor<1,dim> phi_k_u = fe_values_rt[velocities].value (k, q);
+       				        for(unsigned int l = 0; l<dofs_per_cell_rt; ++l)
+       				           {
+       					         const Tensor<1,dim> phi_l_u = fe_values_rt[velocities].value (l, q);
+       					         local_matrix(i,j) += (2 *1*(phi_i_symmgrad * phi_j_symmgrad) +
+                    		                           1*(phi_i_div * phi_j_div) -
+                                                       1*(fe_values[pressure_interior].value (i,q)* phi_j_div) +
+       					        		               1*coefficient_values[q]*cell_matrix_C[i][k]*cell_matrix_C[j][l]*
+       							                       phi_k_u*phi_l_u +
+       							                       1*(phi_j_div*fe_values[pressure_interior].value (i,q)))*
+       							                       fe_values_rt.JxW(q);
+       				            }
+       			           }
+       		         }
+       	         }
              }
 
-       // Now, for mass matrix in Darcy part.
-       for (unsigned int q=0; q<n_q_points_rt; ++q)
-            {
-       	       for(unsigned int i = 0; i<dofs_per_cell; ++i)
-       	          {
-       		        for(unsigned int j = 0; j<dofs_per_cell; ++j)
-       		           {
-       		        	local_matrix_DarcyMass(i,j) += (fe_values[pressure_interior].value(i,q) *
-       		        			                        fe_values[pressure_interior].value(j,q)*
-       		        	   	                            fe_values.JxW (q));
-       		           }
-       	          }
-            }
-       local_matrix_Darcy = 1*local_matrix_DarcyMass + 1*local_matrix_DarcyStf;
-      // Now, for Elasticity strain-strain
-      // But, need to take average for phi_i_div and phi_j_div
-      // have to do this later!!!!
-       for (unsigned int q=0; q<n_q_points; ++q)
-        for (unsigned int i=0; i<dofs_per_cell; ++i)
-          {
-            const SymmetricTensor<2,dim> phi_i_symmgrad
-              = fe_values[displacements].symmetric_gradient (i,q);
-            const double phi_i_div
-              = fe_values[displacements].divergence (i,q);
-            for (unsigned int j=0; j<dofs_per_cell; ++j)
-              {
-                const SymmetricTensor<2,dim> phi_j_symmgrad
-                  = fe_values[displacements].symmetric_gradient (j,q);
-                const double phi_j_div
-                  = fe_values[displacements].divergence (j,q);
-                local_matrix_ElasStrain(i,j) += (2 *1*(phi_i_symmgrad * phi_j_symmgrad) +
-                		             1*(phi_i_div * phi_j_div)) *
-                                     fe_values.JxW(q);
-              }
-           }
-       // Now, for Darcy-Elasticity, local_matrix_DarcyElas
-       // Later, need to take average of divergence!!!!
-       for (unsigned int q=0; q<n_q_points; ++q)
-           for (unsigned int i=0; i<dofs_per_cell; ++i)
-               {
-                 for (unsigned int j=0; j<dofs_per_cell; ++j)
-                     {
-                	   const double phi_j_div = fe_values[displacements].divergence (j,q);
-                       local_matrix_DarcyElas(i,j) -=  1*(fe_values[pressure_interior].value (i,q)*
-                    		                           phi_j_div)*
-                                                       fe_values.JxW(q);
-                     }
-                 }
-       // Now, for Elasticity-Darcy, local_matrix_ElasDarcy
-       // same as previous, need to do average later!
-       for (unsigned int q=0; q<n_q_points; ++q)
-            for (unsigned int i=0; i<dofs_per_cell; ++i)
-                {
-               	  const double phi_i_div = fe_values[displacements].divergence (i,q);
-                  for (unsigned int j=0; j<dofs_per_cell; ++j)
-                      {
-                        local_matrix_ElasDarcy(i,j) +=  1*(phi_i_div*
-                           		                        fe_values[pressure_interior].value (j,q)) *
-                                                        fe_values.JxW(q);
-                      }
-                }
-       //
-       cell->get_dof_indices (local_dof_indices);
-       for (unsigned int i=0; i<dofs_per_cell; ++i)
-           for (unsigned int j=0; j<dofs_per_cell; ++j)
-               {
-                 system_matrix.add(local_dof_indices[i],
-                                   local_dof_indices[j],
-                                   local_matrix_ElasStrain(i,j));
-                 system_matrix.add(local_dof_indices[i],
-                                   local_dof_indices[j],
-                                   local_matrix_Darcy(i,j));
-                 system_matrix.add(local_dof_indices[i],
-                                   local_dof_indices[j],
-                                   local_matrix_ElasDarcy(i,j));
-                 system_matrix.add(local_dof_indices[i],
-                                   local_dof_indices[j],
-                                   local_matrix_DarcyElas(i,j));
-               }
+          cell->get_dof_indices (local_dof_indices);
+          for (unsigned int i=0; i<dofs_per_cell; ++i)
+              for (unsigned int j=0; j<dofs_per_cell; ++j)
+                  {
+                    system_matrix.add(local_dof_indices[i],
+                                      local_dof_indices[j],
+                                      local_matrix(i,j));
+                  }
+
+//     // In the local matrix of this element, component is
+//     // $\int_{E} \mathbf{K} c_{ik} c_{jl} \mathbf{w}_k \cdot \mathbf{w}_l.$
+//     // We have calculated coefficients $c$ from the previous step.
+//     // And these basis functions $\mathbf{w}$ are defined in the interior.
+//     // This is for Darcy stiff. matrix.
+//       for (unsigned int q=0; q<n_q_points_rt; ++q)
+//           {
+//	         for(unsigned int i = 0; i<dofs_per_cell; ++i)
+//	            {
+//		          for(unsigned int j = 0; j<dofs_per_cell; ++j)
+//		             {
+//			           for(unsigned int k = 0; k<dofs_per_cell_rt; ++k)
+//			              {
+//				            const Tensor<1,dim> phi_k_u = fe_values_rt[velocities].value (k, q);
+//				            for(unsigned int l = 0; l<dofs_per_cell_rt; ++l)
+//				               {
+//					             const Tensor<1,dim> phi_l_u = fe_values_rt[velocities].value (l, q);
+//					             local_matrix_DarcyStf(i,j) += coefficient_values[q]*cell_matrix_C[i][k]*cell_matrix_C[j][l]*
+//							                                   phi_k_u*phi_l_u*
+//							                                   fe_values_rt.JxW(q);
+//				                }
+//			               }
+//		              }
+//	             }
+//             }
+//
+//       // Now, for mass matrix in Darcy part.
+//       for (unsigned int q=0; q<n_q_points_rt; ++q)
+//            {
+//       	       for(unsigned int i = 0; i<dofs_per_cell; ++i)
+//       	          {
+//       		        for(unsigned int j = 0; j<dofs_per_cell; ++j)
+//       		           {
+//       		        	local_matrix_DarcyMass(i,j) += (fe_values[pressure_interior].value(i,q) *
+//       		        			                        fe_values[pressure_interior].value(j,q)*
+//       		        	   	                            fe_values.JxW (q));
+//       		           }
+//       	          }
+//            }
+//       local_matrix_Darcy = 1*local_matrix_DarcyMass + 1*local_matrix_DarcyStf;
+//      // Now, for Elasticity strain-strain
+//      // But, need to take average for phi_i_div and phi_j_div
+//      // have to do this later!!!!
+//       for (unsigned int q=0; q<n_q_points; ++q)
+//        for (unsigned int i=0; i<dofs_per_cell; ++i)
+//          {
+//            const SymmetricTensor<2,dim> phi_i_symmgrad
+//              = fe_values[displacements].symmetric_gradient (i,q);
+//            const double phi_i_div
+//              = fe_values[displacements].divergence (i,q);
+//            for (unsigned int j=0; j<dofs_per_cell; ++j)
+//              {
+//                const SymmetricTensor<2,dim> phi_j_symmgrad
+//                  = fe_values[displacements].symmetric_gradient (j,q);
+//                const double phi_j_div
+//                  = fe_values[displacements].divergence (j,q);
+//                local_matrix_ElasStrain(i,j) += (2 *1*(phi_i_symmgrad * phi_j_symmgrad) +
+//                		             1*(phi_i_div * phi_j_div)) *
+//                                     fe_values.JxW(q);
+//              }
+//           }
+//       // Now, for Darcy-Elasticity, local_matrix_DarcyElas
+//       // Later, need to take average of divergence!!!!
+//       for (unsigned int q=0; q<n_q_points; ++q)
+//           for (unsigned int i=0; i<dofs_per_cell; ++i)
+//               {
+//                 for (unsigned int j=0; j<dofs_per_cell; ++j)
+//                     {
+//                	   const double phi_j_div = fe_values[displacements].divergence (j,q);
+//                       local_matrix_DarcyElas(i,j) -=  1*(fe_values[pressure_interior].value (i,q)*
+//                    		                           phi_j_div)*
+//                                                       fe_values.JxW(q);
+//                     }
+//                 }
+//       // Now, for Elasticity-Darcy, local_matrix_ElasDarcy
+//       // same as previous, need to do average later!
+//       for (unsigned int q=0; q<n_q_points; ++q)
+//            for (unsigned int i=0; i<dofs_per_cell; ++i)
+//                {
+//               	  const double phi_i_div = fe_values[displacements].divergence (i,q);
+//                  for (unsigned int j=0; j<dofs_per_cell; ++j)
+//                      {
+//                        local_matrix_ElasDarcy(i,j) +=  1*(phi_i_div*
+//                           		                        fe_values[pressure_interior].value (j,q)) *
+//                                                        fe_values.JxW(q);
+//                      }
+//                }
+//       //
+//       cell->get_dof_indices (local_dof_indices);
+//       for (unsigned int i=0; i<dofs_per_cell; ++i)
+//           for (unsigned int j=0; j<dofs_per_cell; ++j)
+//               {
+//                 system_matrix.add(local_dof_indices[i],
+//                                   local_dof_indices[j],
+//                                   local_matrix_ElasStrain(i,j));
+//                 system_matrix.add(local_dof_indices[i],
+//                                   local_dof_indices[j],
+//                                   local_matrix_Darcy(i,j));
+//                 system_matrix.add(local_dof_indices[i],
+//                                   local_dof_indices[j],
+//                                   local_matrix_ElasDarcy(i,j));
+//                 system_matrix.add(local_dof_indices[i],
+//                                   local_dof_indices[j],
+//                                   local_matrix_DarcyElas(i,j));
+//               }
     }
 
  }
