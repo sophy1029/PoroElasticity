@@ -89,6 +89,8 @@ private:
   BlockVector<double> solution;
   BlockVector<double> old_solution;
   BlockVector<double> system_rhs;
+  Vector<double> old_solution_displacement;
+  Vector<double> old_solution_pressure;
 
   double       time;
   double       time_step;
@@ -231,7 +233,6 @@ template <int dim>
 
     virtual double value (const Point<dim>   &p,
                           const unsigned int  component = 0) const;
-
     virtual void vector_value (const Point<dim> &p,
                                Vector<double>   &value) const;
   };
@@ -242,15 +243,56 @@ template <int dim>
                              const unsigned int component ) const
   {
     return ZeroFunction<dim>(dim+2).value (p, component);
+//	  return 0;
   }
 
   template <int dim>
-  void
-  InitialValues<dim>::vector_value (const Point<dim> &p,
-                                    Vector<double>   &values) const
-  {
-    ZeroFunction<dim>(dim+2).vector_value (p, values);
-  }
+    void
+    InitialValues<dim>::vector_value (const Point<dim> &p,
+                                      Vector<double>   &values) const
+    {
+      ZeroFunction<dim>(dim+2).vector_value (p, values);
+//	  values(0) = 0;
+//	  values(1) = 0;
+    }
+
+
+//template <int dim>
+//  class InitialValuesPressure : public Function<dim>
+//  {
+//  public:
+//    InitialValuesPressure () : Function<dim>(dim+2) {}  //?? is it dim+2?
+//
+//    virtual double value (const Point<dim>   &p,
+//                          const unsigned int  component = 0) const;
+//  };
+//
+//  template <int dim>
+//  double
+//  InitialValuesPressure<dim>::value (const Point<dim>  &p,
+//                             const unsigned int component ) const
+//  {
+//    return ZeroFunction<dim>(dim+2).value (p, component);
+//  }
+//
+//  template <int dim>
+//    class InitialValuesDisplacement : public Function<dim>
+//    {
+//    public:
+//      InitialValuesDisplacement () : Function<dim>(dim+2) {}  //?? is it dim+2?
+//
+//      virtual void vector_value (const Point<dim> &p,
+//                                 Vector<double>   &value) const;
+//    };
+//
+//  template <int dim>
+//  void
+//  InitialValuesDisplacement<dim>::vector_value (const Point<dim> &p,
+//                                    Vector<double>   &values) const
+//  {
+//    ZeroFunction<dim>(dim+2).vector_value (p, values);
+//  }
+
 // @sect3{WGDarcyEquation class implementation}
 
 // @sect4{WGDarcyEquation::WGDarcyEquation}
@@ -261,8 +303,8 @@ template <int dim>
    fe_rt (0),
    dof_handler_rt (triangulation), // for discrete weak gradient
 
-//   fe (FE_BernardiRaugel<dim>(1),1,  // what's for dim? 1? 2?
-   fe (FE_RaviartThomas<dim>(0),1,
+//   fe (FE_BernardiRaugel<dim>(1),2,  // what's for dim? 1? 2?
+   fe (FE_Q<dim>(1), dim,
 	   FE_DGQ<dim>(0), 1,
 	   FE_FaceQ<dim>(0), 1),
 
@@ -278,18 +320,27 @@ template <int dim>
  void PoroElasBR1WG<dim>::make_grid_and_dofs ()
  {
    GridGenerator::hyper_cube (triangulation, 0, 1);
-   triangulation.refine_global (1);
+   triangulation.refine_global (0);
 
    dof_handler_rt.distribute_dofs (fe_rt);
    dof_handler.distribute_dofs(fe);
-   DoFRenumbering::component_wise (dof_handler);
 
+   DoFRenumbering::component_wise (dof_handler);
    std::vector<types::global_dof_index> dofs_per_component (dim+2);
    DoFTools::count_dofs_per_component (dof_handler, dofs_per_component);
-   const unsigned int n_u = dofs_per_component[0],
+   const unsigned int n_u = 2*dofs_per_component[0],
                       n_p_interior = dofs_per_component[dim],
                       n_p_face = dofs_per_component[dim+1],
                       n_p = dofs_per_component[dim] + dofs_per_component[dim+1];
+
+//   std::vector<unsigned int> block_component (dim+1,0);
+//   block_component[dim] = 1;
+//   DoFRenumbering::component_wise (dof_handler, block_component);
+//   std::vector<types::global_dof_index> dofs_per_block (2);
+//   DoFTools::count_dofs_per_block (dof_handler, dofs_per_block, block_component);
+//   const unsigned int n_u = dofs_per_block[0],
+//                      n_p = dofs_per_block[1];
+
 
    std::cout << "Number of active cells: "
              << triangulation.n_active_cells()
@@ -320,6 +371,13 @@ template <int dim>
    solution.block(1).reinit (n_p);
    solution.collect_sizes ();
 
+//   old_solution_displacement.reinit(n_u);
+//   old_solution_pressure.reinit(n_p);
+   old_solution.reinit (2);
+   old_solution.block(0).reinit(n_u);
+   old_solution.block(1).reinit (n_p);
+   old_solution.collect_sizes ();
+
    system_rhs.reinit (2);
    system_rhs.block(0).reinit (n_u);
    system_rhs.block(1).reinit (n_p);
@@ -332,7 +390,7 @@ template <int dim>
 //  void PoroElasBR1WG<dim>::solve_time_step()
 //   {
 //     SolverControl solver_control(1000, 1e-8 * system_rhs.l2_norm());
-//     SolverCG<> cg(solver_control);
+//     SolverCG<BlockVector<double>> cg(solver_control);
 //
 //     cg.solve(system_matrix, solution, system_rhs,
 //    		 PreconditionIdentity());
@@ -394,12 +452,12 @@ template <int dim>
    FullMatrix<double>   cell_matrix_F (dofs_per_cell,dofs_per_cell_rt);
    FullMatrix<double>   cell_matrix_C (dofs_per_cell,dofs_per_cell_rt);
    FullMatrix<double>   local_matrix (dofs_per_cell,dofs_per_cell);
-//   FullMatrix<double>   local_matrix_DarcyStf (dofs_per_cell,dofs_per_cell);
-//   FullMatrix<double>   local_matrix_DarcyMass (dofs_per_cell,dofs_per_cell);
-//   FullMatrix<double>   local_matrix_Darcy(dofs_per_cell,dofs_per_cell);
-//   FullMatrix<double>   local_matrix_ElasStrain (dofs_per_cell,dofs_per_cell);
-//   FullMatrix<double>   local_matrix_DarcyElas (dofs_per_cell,dofs_per_cell);
-//   FullMatrix<double>   local_matrix_ElasDarcy (dofs_per_cell,dofs_per_cell);
+   FullMatrix<double>   local_matrix_DarcyStf (dofs_per_cell,dofs_per_cell);
+   FullMatrix<double>   local_matrix_DarcyMass (dofs_per_cell,dofs_per_cell);
+   FullMatrix<double>   local_matrix_Darcy(dofs_per_cell,dofs_per_cell);
+   FullMatrix<double>   local_matrix_ElasStrain (dofs_per_cell,dofs_per_cell);
+   FullMatrix<double>   local_matrix_DarcyElas (dofs_per_cell,dofs_per_cell);
+   FullMatrix<double>   local_matrix_ElasDarcy (dofs_per_cell,dofs_per_cell);
    FullMatrix<double>   cell_matrix_D (dofs_per_cell_rt,dofs_per_cell_rt);
    FullMatrix<double>   cell_matrix_E (dofs_per_cell_rt,dofs_per_cell_rt);
    Vector<double>       cell_rhs (dofs_per_cell);
@@ -521,15 +579,23 @@ template <int dim>
        					         local_matrix(i,j) += (2 *1*(phi_i_symmgrad * phi_j_symmgrad) +
                     		                           1*(phi_i_div * phi_j_div) -
                                                        1*(fe_values[pressure_interior].value (i,q)* phi_j_div) +
+                                                       1*(fe_values[pressure_interior].value(i,q) *
+                                                       fe_values[pressure_interior].value(j,q)) +
        					        		               1*coefficient_values[q]*cell_matrix_C[i][k]*cell_matrix_C[j][l]*
        							                       phi_k_u*phi_l_u +
-       							                       1*(phi_j_div*fe_values[pressure_interior].value (i,q)))*
+       							                       1*(phi_i_div*fe_values[pressure_interior].value (j,q)))*
        							                       fe_values_rt.JxW(q);
+
        				            }
        			           }
        		         }
        	         }
              }
+       for (unsigned int i=0; i<dofs_per_cell; ++i)
+                     for (unsigned int j=0; j<dofs_per_cell; ++j)
+                         {
+       std::cout<< "i " << i << " j "<<j<<" "<< local_matrix(i,j)<<std::endl;
+                         }
 
           cell->get_dof_indices (local_dof_indices);
           for (unsigned int i=0; i<dofs_per_cell; ++i)
@@ -579,7 +645,7 @@ template <int dim>
 //       		           }
 //       	          }
 //            }
-//       local_matrix_Darcy = 1*local_matrix_DarcyMass + 1*local_matrix_DarcyStf;
+//       local_matrix_Darcy = local_matrix_DarcyMass + local_matrix_DarcyStf;
 //      // Now, for Elasticity strain-strain
 //      // But, need to take average for phi_i_div and phi_j_div
 //      // have to do this later!!!!
@@ -646,6 +712,12 @@ template <int dim>
 //                                   local_matrix_DarcyElas(i,j));
 //               }
     }
+//   for (unsigned int i=0; i<13; ++i)
+//                 for (unsigned int j=0; j<13; ++j)
+//                     {
+//                	 std::cout<<"system" <<std::endl;
+//                	 std::cout<< "i " << i << " j "<<j<<" "<< system_matrix(i,j)<<std::endl;
+//                     }
 
  }
 
@@ -669,6 +741,15 @@ template <int dim>
  {
    std::cout << "Solving problem in " << dim << " space dimensions." << std::endl;
    make_grid_and_dofs();
+//   VectorTools::project (dof_handler, constraints, QGauss<dim>(3),
+//                         InitialValuesDisplacement<dim>(),
+//                         old_solution_displacement);
+//   VectorTools::project (dof_handler, constraints, QGauss<dim>(3),
+//                         InitialValuesPressure<dim>(),
+//                         old_solution_pressure);
+//   VectorTools::project (dof_handler, constraints, QGauss<dim>(3),
+//                         InitialValues<dim>(),
+//                         old_solution);
 //   solve_time_step();
    assemble_system ();
 //   solve ();
