@@ -20,6 +20,7 @@
 #include <deal.II/lac/block_sparse_matrix.h>
 #include <deal.II/lac/sparse_matrix.h>
 #include <deal.II/lac/solver_cg.h>
+#include <deal.II/lac/sparse_direct.h>
 #include <deal.II/lac/precondition.h>
 #include <deal.II/lac/constraint_matrix.h>
 //#include <deal.II/lac/affine_constraints.h>
@@ -65,9 +66,8 @@ public:
 
 private:
   void make_grid_and_dofs ();
-//  void solve_time_step();
   void assemble_system ();
-//  void solve ();
+  void solve_time_step();
 
   Triangulation<dim>   triangulation;
 
@@ -182,25 +182,43 @@ double FluidRightHandSide<dim>::value(const Point<dim> &p,
 }
 
 template <int dim>
-  class BodyRightHandSide : public Function<dim>
-  {
-  public:
-	BodyRightHandSide () : Function<dim>(dim) {}
+class BodyRightHandSide : public TensorFunction<1,dim>
+{
+public:
+  BodyRightHandSide () : TensorFunction<1,dim>() {}
+  virtual Tensor<1,dim> value (const Point<dim>   &p) const override;
+};
 
-    virtual void vector_value (const Point<dim> &p,
-                               Vector<double>   &value) const;
-  };
 template <int dim>
-  void
-  BodyRightHandSide<dim>::vector_value (const Point<dim> &p,
-                                    Vector<double>   &values) const
-  {
-    Assert (values.size() == dim,
-            ExcDimensionMismatch (values.size(), dim));
+Tensor<1,dim> BodyRightHandSide<dim>::value (const Point<dim>   &p) const
+{
+  Tensor<1,dim> return_value;
+  return_value[0] = -4*M_PI*cos(2*M_PI*p[0])*sin(2*M_PI*p[1])*sin(2*M_PI*this->get_time());
+  return_value[1] = -4*M_PI*sin(2*M_PI*p[0])*cos(2*M_PI*p[1])*sin(2*M_PI*this->get_time());
+  return return_value;
 
-    values(0) = -4*M_PI*cos(2*M_PI*p[0])*sin(2*M_PI*p[1])*sin(2*M_PI*this->get_time());
-    values(1) = -4*M_PI*sin(2*M_PI*p[0])*cos(2*M_PI*p[1])*sin(2*M_PI*this->get_time());
-  }
+}
+
+//template <int dim>
+//  class BodyRightHandSide : public Function<dim>
+//  {
+//  public:
+//	BodyRightHandSide () : Function<dim>(dim) {}
+//
+//    virtual void vector_value (const Point<dim> &p,
+//                               Vector<double>   &value) const;
+//  };
+//template <int dim>
+//  void
+//  BodyRightHandSide<dim>::vector_value (const Point<dim> &p,
+//                                    Vector<double>   &values) const
+//  {
+//    Assert (values.size() == dim,
+//            ExcDimensionMismatch (values.size(), dim));
+//
+//    values(0) = -4*M_PI*cos(2*M_PI*p[0])*sin(2*M_PI*p[1])*sin(2*M_PI*this->get_time());
+//    values(1) = -4*M_PI*sin(2*M_PI*p[0])*cos(2*M_PI*p[1])*sin(2*M_PI*this->get_time());
+//  }
 
 // Displacement D.B.C., pressure is N.B.C., calculated later(?)
 template <int dim>
@@ -239,7 +257,7 @@ template <int dim>
 
   template <int dim>
   double
-  InitialValues<dim>::value (const Point<dim>  &p,
+  InitialValues<dim>::value (const Point<dim>  & p,
                              const unsigned int component ) const
   {
     return ZeroFunction<dim>(dim+2).value (p, component);
@@ -248,7 +266,7 @@ template <int dim>
 
   template <int dim>
     void
-    InitialValues<dim>::vector_value (const Point<dim> &p,
+    InitialValues<dim>::vector_value (const Point<dim> & p,
                                       Vector<double>   &values) const
     {
       ZeroFunction<dim>(dim+2).vector_value (p, values);
@@ -266,7 +284,7 @@ template <int dim>
 //    virtual double value (const Point<dim>   &p,
 //                          const unsigned int  component = 0) const;
 //  };
-//
+
 //  template <int dim>
 //  double
 //  InitialValuesPressure<dim>::value (const Point<dim>  &p,
@@ -310,7 +328,7 @@ template <int dim>
 
    dof_handler (triangulation),
 
-   time_step (1./64) // what's time_step? need to set later, different from step-23
+   time_step (1./20) // what's time_step? need to set later, different from step-23
 
  {}
 
@@ -382,6 +400,7 @@ template <int dim>
    system_rhs.block(0).reinit (n_u);
    system_rhs.block(1).reinit (n_p);
    system_rhs.collect_sizes ();     // not sure about rhs.
+
  }
 
  // From step-26, this function is the one that solves the actual linear system
@@ -591,11 +610,11 @@ template <int dim>
        		         }
        	         }
              }
-       for (unsigned int i=0; i<dofs_per_cell; ++i)
-                     for (unsigned int j=0; j<dofs_per_cell; ++j)
-                         {
-       std::cout<< "i " << i << " j "<<j<<" "<< local_matrix(i,j)<<std::endl;
-                         }
+//       for (unsigned int i=0; i<dofs_per_cell; ++i)
+//                     for (unsigned int j=0; j<dofs_per_cell; ++j)
+//                         {
+//       std::cout<< "i " << i << " j "<<j<<" "<< local_matrix(i,j)<<std::endl;
+//                         }
 
           cell->get_dof_indices (local_dof_indices);
           for (unsigned int i=0; i<dofs_per_cell; ++i)
@@ -721,17 +740,36 @@ template <int dim>
 
  }
 
- // @sect4{WGDarcyEquation<dim>::solve}
-
- // Solving the system of the Darcy equation. Now, we have pressures in interiors and on faces.
-// template <int dim>
-// void PoroElasBR1WG<dim>::solve ()
+//template <int dim>
+//void PoroElasBR1WG<dim>::assemble_rhs ()
 // {
+//	QGauss<dim>   quadrature_formula(fe.degree+2);
+//	QGauss<dim-1> face_quadrature_formula(fe.degree+2);
+//	FEValues<dim> fe_values (fe, quadrature_formula,
+//	                             update_values    | update_gradients |
+//	                             update_quadrature_points  | update_JxW_values);
+//
+//	const unsigned int   dofs_per_cell   = fe.dofs_per_cell;
+//    const unsigned int   n_q_points      = quadrature_formula.size();
+//    const unsigned int   n_face_q_points = face_quadrature_formula.size();
+//
+//    Vector<double>       local_rhs (dofs_per_cell);
+//
+// }
+
+//  @sect4{WGDarcyEquation<dim>::solve}
+ template <int dim>
+ void PoroElasBR1WG<dim>::solve_time_step ()
+ {
 //   SolverControl           solver_control (1000, 1e-8 * system_rhs.l2_norm());
 //   SolverCG<>              solver (solver_control);
 //   solver.solve (system_matrix, solution, system_rhs,
 //                 PreconditionIdentity());
-// }
+
+	 SparseDirectUMFPACK  A_direct;
+	 A_direct.initialize(system_matrix);
+	 A_direct.vmult (solution, system_rhs);
+ }
 
  // @sect4{WGDarcyEquation::run}
 
@@ -741,20 +779,118 @@ template <int dim>
  {
    std::cout << "Solving problem in " << dim << " space dimensions." << std::endl;
    make_grid_and_dofs();
+
 //   VectorTools::project (dof_handler, constraints, QGauss<dim>(3),
 //                         InitialValuesDisplacement<dim>(),
 //                         old_solution_displacement);
 //   VectorTools::project (dof_handler, constraints, QGauss<dim>(3),
 //                         InitialValuesPressure<dim>(),
 //                         old_solution_pressure);
-//   VectorTools::project (dof_handler, constraints, QGauss<dim>(3),
-//                         InitialValues<dim>(),
+//
+// Projection should be written in this way?
+//   VectorTools::project (dof_handler, constraints, QGauss<dim>(fe.degree+2),
+//		                 ZeroFunction<dim>(dim+2),
 //                         old_solution);
-//   solve_time_step();
-   assemble_system ();
-//   solve ();
- }
 
+// will do projection by myself.
+
+   assemble_system ();
+
+   QGauss<dim>   quadrature_formula(fe.degree+2);
+   QGauss<dim-1> face_quadrature_formula(fe.degree+2);
+   FEValues<dim> fe_values (fe, quadrature_formula,
+                            update_values    | update_gradients |
+   	                        update_quadrature_points  | update_JxW_values);
+
+   const unsigned int   dofs_per_cell   = fe.dofs_per_cell;
+   const unsigned int   n_q_points      = quadrature_formula.size();
+
+   Vector<double>       local_rhs (dofs_per_cell);
+
+   std::vector<Vector<double> > old_solution_values(n_q_points, Vector<double>(dim+2));
+   std::vector<Vector<double> > present_solution_values(n_q_points, Vector<double>(dim+2));
+
+   std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
+
+   const FEValuesExtractors::Vector displacements (0); //
+   const FEValuesExtractors::Scalar pressure_interior (dim); // this is for pressure
+   const FEValuesExtractors::Scalar pressure_face (dim+1); // maybe it is with this dim.
+
+   typename DoFHandler<dim>::active_cell_iterator
+   cell = dof_handler.begin_active(),
+   endc = dof_handler.end();
+
+   for (timestep_number=1, time=time_step; time<=0.25; time+=time_step, ++timestep_number)
+     {
+       std::cout << "Time step " << timestep_number
+                 << " at t=" << time
+                 << std::endl;
+
+   BodyRightHandSide<dim> body_rhs_function;
+   body_rhs_function.set_time (time);
+   FluidRightHandSide<dim> fluid_rhs_function;
+   fluid_rhs_function.set_time (time);
+   for (; cell!=endc; ++cell)
+       {
+        local_rhs = 0;
+        fe_values.reinit (cell);
+
+        fe_values.get_function_values (old_solution, old_solution_values);
+        fe_values.get_function_values (solution, present_solution_values);
+
+        for (unsigned int q=0; q<n_q_points; ++q)
+        {
+        	const double fluid_rhs_value = fluid_rhs_function.value(fe_values.quadrature_point (q));
+        	const Tensor<1,dim> body_rhs_value = body_rhs_function.value(fe_values.quadrature_point (q));
+        	std::cout<< "fe_values.quadrature_point "   << fe_values.quadrature_point (q) <<std::endl;
+//        	std::cout<< "fluid_rhs_value "   << fluid_rhs_value <<std::endl;
+          for (unsigned int i=0; i<dofs_per_cell; ++i)
+            {
+              const double old_pressure_interior = old_solution_values[q](dim);
+
+              Tensor<1,dim> old_displacment;
+              for (unsigned int d=0; d<dim; ++d)
+            	  old_displacment[d] = old_solution_values[q](d);
+
+              Tensor<1,dim> present_displacment;
+              for (unsigned int d=0; d<dim; ++d)
+                present_displacment[d] = present_solution_values[q](d);
+
+              const Tensor<1,dim> phi_i_v = fe_values[displacements].value (i, q);
+              const double phi_i_q = fe_values[pressure_interior].value(i,q);
+
+              local_rhs(i) += (body_rhs_value*phi_i_v +
+            		           1*old_pressure_interior*phi_i_q +
+            		           1*fluid_rhs_value*phi_i_q)*
+                               fe_values.JxW(q);
+             }
+       }
+        cell->get_dof_indices (local_dof_indices);
+        for (unsigned int i=0; i<dofs_per_cell; ++i)
+        system_rhs(local_dof_indices[i]) += local_rhs(i);
+       }
+//   for (unsigned int i=0; i<13; ++i)
+//   std::cout<<"system_rhs "<< system_rhs(i)<<std::endl;
+
+//   Vector<double> tmp (dof_handler.n_dofs());
+//   system_matrix.block(1,0).vmult(tmp, old_solution.block(0));
+//   tmp = 1*tmp;
+
+   // then how to construct the system_rhs??
+//   system_rhs.add(tmp);
+
+
+   // Next, set Dirichelet boundary conditions
+
+
+   solve_time_step();
+
+   // output_results ();
+
+   old_solution = solution;
+
+       }
+ }
  // @sect3{The <code>main</code> function}
 
  // This is the main function. We can change the dimension here to run in 3d.
