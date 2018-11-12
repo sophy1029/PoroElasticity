@@ -339,7 +339,7 @@ template <int dim>
  void PoroElasBR1WG<dim>::make_grid_and_dofs ()
  {
    GridGenerator::hyper_cube (triangulation, 0, 1);
-   triangulation.refine_global (1);
+   triangulation.refine_global (0);
 
    dof_handler_rt.distribute_dofs (fe_rt);
    dof_handler.distribute_dofs(fe);
@@ -490,6 +490,8 @@ template <int dim>
    FullMatrix<double>   cell_matrix_E (dofs_per_cell_rt,dofs_per_cell_rt);
    Vector<double>       cell_rhs (dofs_per_cell);
    Vector<double>       cell_solution (dofs_per_cell);
+   Vector<double>       average_phi_i_div(dofs_per_cell);
+   Vector<double>       average_phi_j_div(dofs_per_cell);
 
    const Coefficient<dim> coefficient;
    std::vector<Tensor<2,dim>> coefficient_values (n_q_points_rt);
@@ -514,6 +516,7 @@ template <int dim>
        cell_matrix_F = 0;
        cell_matrix_C = 0;
        local_matrix = 0;
+       const double cell_area = cell->measure();
 //       local_matrix_DarcyStf = 0;
 //       local_matrix_DarcyMass = 0;
 //       local_matrix_ElasStrain = 0;
@@ -583,6 +586,26 @@ template <int dim>
        cell_matrix_F.mmult(cell_matrix_C,cell_matrix_rt);
 
 
+     // calculate the average of divergence of displacement
+       for (unsigned int q=0; q<n_q_points; ++q)
+         {
+           for(unsigned int i = 0; i<dofs_per_cell; ++i)
+             {
+        	   average_phi_i_div(i) = fe_values[displacements].divergence (i,q)
+        			               *fe_values.JxW(q)/cell_area;
+             }
+         }
+
+
+       for (unsigned int q=0; q<n_q_points; ++q)
+         {
+           for(unsigned int j = 0; j<dofs_per_cell; ++j)
+             {
+               average_phi_j_div(j) = fe_values[displacements].divergence (j,q)
+               			          *fe_values.JxW(q)/cell_area;
+             }
+         }
+
      // Construct the local matrix.
        for (unsigned int q=0; q<n_q_points_rt; ++q)
            {
@@ -612,7 +635,7 @@ template <int dim>
        					        		               1*coefficient_values[q]*cell_matrix_C[i][k]*cell_matrix_C[j][l]*
        							                       phi_k_u*phi_l_u +
        							                       1*(phi_i_div*fe_values[pressure_interior].value (j,q)))*
-       							                       fe_values_rt.JxW(q);
+       							                       fe_values.JxW(q);
 
        				            }
        			           }
