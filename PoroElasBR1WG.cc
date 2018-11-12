@@ -91,6 +91,7 @@ private:
   BlockVector<double> system_rhs;
   Vector<double> old_solution_displacement;
   Vector<double> old_solution_pressure;
+  Vector<double> old_solution_pressure_interior;
 
   double       time;
   double       time_step;
@@ -243,73 +244,73 @@ template <int dim>
   }
 
 // Initial values, u(0,x)=0 and p(0,x)=0
+//template <int dim>
+//  class InitialValues : public Function<dim>
+//  {
+//  public:
+//    InitialValues () : Function<dim>(dim+2) {}  //?? is it dim+2?
+//
+//    virtual double value (const Point<dim>   &p,
+//                          const unsigned int  component = 0) const;
+//    virtual void vector_value (const Point<dim> &p,
+//                               Vector<double>   &value) const;
+//  };
+//
+//  template <int dim>
+//  double
+//  InitialValues<dim>::value (const Point<dim>  & p,
+//                             const unsigned int component ) const
+//  {
+//    return ZeroFunction<dim>(dim+2).value (p, component);
+////	  return 0;
+//  }
+//
+//  template <int dim>
+//    void
+//    InitialValues<dim>::vector_value (const Point<dim> & p,
+//                                      Vector<double>   &values) const
+//    {
+//      ZeroFunction<dim>(dim+2).vector_value (p, values);
+////	  values(0) = 0;
+////	  values(1) = 0;
+//    }
+
+
 template <int dim>
-  class InitialValues : public Function<dim>
+  class InitialValuesPressure : public Function<dim>
   {
   public:
-    InitialValues () : Function<dim>(dim+2) {}  //?? is it dim+2?
+    InitialValuesPressure () : Function<dim>() {}  //?? is it dim+2?
 
     virtual double value (const Point<dim>   &p,
                           const unsigned int  component = 0) const;
-    virtual void vector_value (const Point<dim> &p,
-                               Vector<double>   &value) const;
   };
 
   template <int dim>
   double
-  InitialValues<dim>::value (const Point<dim>  & p,
+  InitialValuesPressure<dim>::value (const Point<dim>  &p,
                              const unsigned int component ) const
   {
-    return ZeroFunction<dim>(dim+2).value (p, component);
-//	  return 0;
+    return ZeroFunction<dim>().value (p, component);
   }
 
   template <int dim>
-    void
-    InitialValues<dim>::vector_value (const Point<dim> & p,
-                                      Vector<double>   &values) const
+    class InitialValuesDisplacement : public Function<dim>
     {
-      ZeroFunction<dim>(dim+2).vector_value (p, values);
-//	  values(0) = 0;
-//	  values(1) = 0;
-    }
+    public:
+      InitialValuesDisplacement () : Function<dim>(dim) {}  //?? is it dim+2?
 
+      virtual void vector_value (const Point<dim> &p,
+                                 Vector<double>   &value) const;
+    };
 
-//template <int dim>
-//  class InitialValuesPressure : public Function<dim>
-//  {
-//  public:
-//    InitialValuesPressure () : Function<dim>(dim+2) {}  //?? is it dim+2?
-//
-//    virtual double value (const Point<dim>   &p,
-//                          const unsigned int  component = 0) const;
-//  };
-
-//  template <int dim>
-//  double
-//  InitialValuesPressure<dim>::value (const Point<dim>  &p,
-//                             const unsigned int component ) const
-//  {
-//    return ZeroFunction<dim>(dim+2).value (p, component);
-//  }
-//
-//  template <int dim>
-//    class InitialValuesDisplacement : public Function<dim>
-//    {
-//    public:
-//      InitialValuesDisplacement () : Function<dim>(dim+2) {}  //?? is it dim+2?
-//
-//      virtual void vector_value (const Point<dim> &p,
-//                                 Vector<double>   &value) const;
-//    };
-//
-//  template <int dim>
-//  void
-//  InitialValuesDisplacement<dim>::vector_value (const Point<dim> &p,
-//                                    Vector<double>   &values) const
-//  {
-//    ZeroFunction<dim>(dim+2).vector_value (p, values);
-//  }
+  template <int dim>
+  void
+  InitialValuesDisplacement<dim>::vector_value (const Point<dim> &p,
+                                    Vector<double>   &values) const
+  {
+    ZeroFunction<dim>(dim).vector_value (p, values);
+  }
 
 // @sect3{WGDarcyEquation class implementation}
 
@@ -338,27 +339,29 @@ template <int dim>
  void PoroElasBR1WG<dim>::make_grid_and_dofs ()
  {
    GridGenerator::hyper_cube (triangulation, 0, 1);
-   triangulation.refine_global (0);
+   triangulation.refine_global (1);
 
    dof_handler_rt.distribute_dofs (fe_rt);
    dof_handler.distribute_dofs(fe);
 
-   DoFRenumbering::component_wise (dof_handler);
-   std::vector<types::global_dof_index> dofs_per_component (dim+2);
-   DoFTools::count_dofs_per_component (dof_handler, dofs_per_component);
-   const unsigned int n_u = 2*dofs_per_component[0],
-                      n_p_interior = dofs_per_component[dim],
-                      n_p_face = dofs_per_component[dim+1],
-                      n_p = dofs_per_component[dim] + dofs_per_component[dim+1];
+//   DoFRenumbering::component_wise (dof_handler);
+//   std::vector<types::global_dof_index> dofs_per_component (dim+2);
+//   DoFTools::count_dofs_per_component (dof_handler, dofs_per_component);
+//   const unsigned int n_u = 2*dofs_per_component[0],
+//                      n_p_interior = dofs_per_component[dim],
+//                      n_p_face = dofs_per_component[dim+1],
+//                      n_p = dofs_per_component[dim] + dofs_per_component[dim+1];
+   std::vector<unsigned int> block_component (dim+2,0);
+   block_component[dim] = 1;
+   block_component[dim+1] = 2;
+   DoFRenumbering::component_wise (dof_handler, block_component);
 
-//   std::vector<unsigned int> block_component (dim+1,0);
-//   block_component[dim] = 1;
-//   DoFRenumbering::component_wise (dof_handler, block_component);
-//   std::vector<types::global_dof_index> dofs_per_block (2);
-//   DoFTools::count_dofs_per_block (dof_handler, dofs_per_block, block_component);
-//   const unsigned int n_u = dofs_per_block[0],
-//                      n_p = dofs_per_block[1];
-
+   std::vector<types::global_dof_index> dofs_per_block (dim+1);
+   DoFTools::count_dofs_per_block (dof_handler, dofs_per_block, block_component);
+   const unsigned int n_u = dofs_per_block[0],
+                      n_p_interior = dofs_per_block[1],
+                      n_p_face =  dofs_per_block[2],
+                      n_p = dofs_per_block[1]+ dofs_per_block[2];
 
    std::cout << "Number of active cells: "
              << triangulation.n_active_cells()
@@ -372,6 +375,10 @@ template <int dim>
    std::cout << "   Number of rt degrees of freedom: "
              << dof_handler_rt.n_dofs()
              << std::endl;
+
+   std::cout<<fe.base_element(0).dofs_per_cell<<std::endl;
+   std::cout<<fe.base_element(1).dofs_per_cell<<std::endl;
+   std::cout<<fe.base_element(2).dofs_per_cell<<std::endl;
 
    BlockDynamicSparsityPattern dsp(2, 2);
    dsp.block(0, 0).reinit (n_u, n_u);
@@ -392,9 +399,11 @@ template <int dim>
 //   old_solution_displacement.reinit(n_u);
 //   old_solution_pressure.reinit(n_p);
    old_solution.reinit (2);
-   old_solution.block(0).reinit(n_u);
+   old_solution.block(0).reinit (n_u);
    old_solution.block(1).reinit (n_p);
    old_solution.collect_sizes ();
+//   const double tmp = old_solution.block(0).size();
+//   std::cout<< "tmp "<<tmp<<std::endl;
 
    system_rhs.reinit (2);
    system_rhs.block(0).reinit (n_u);
@@ -794,6 +803,13 @@ template <int dim>
 
 // will do projection by myself.
 
+//   DoFHandler<dim> interior_dof_handler (triangulation);
+//   interior_dof_handler.distribute_dofs (fe.base_element(dim));
+//   VectorTools::project (interior_dof_handler, constraints, QGauss<dim>(3),
+//                         InitialValuesPressure<dim>(),
+//                         old_solution_pressure_interior);
+
+
    assemble_system ();
 
    QGauss<dim>   quadrature_formula(fe.degree+2);
@@ -802,23 +818,151 @@ template <int dim>
                             update_values    | update_gradients |
    	                        update_quadrature_points  | update_JxW_values);
 
+   FEFaceValues<dim> fe_face_values (fe, face_quadrature_formula,
+                                     update_values   | update_normal_vectors |
+                                     update_quadrature_points | update_JxW_values);
+
    const unsigned int   dofs_per_cell   = fe.dofs_per_cell;
-   const unsigned int   n_q_points      = quadrature_formula.size();
+   const unsigned int   n_q_points      = fe_values.get_quadrature().size();
+   const unsigned int   n_face_q_points = fe_face_values.get_quadrature().size();
 
    Vector<double>       local_rhs (dofs_per_cell);
+
+   const InitialValuesPressure<dim> pressure_initial;
+   Vector<double> old_solution_pressure_Interior_values(n_q_points);
+   Vector<double> old_solution_pressure_Face_values(n_q_points);
+   FullMatrix<double> projection_pressure_initial_face(triangulation.n_active_cells(),4);
+   Vector<double> projection_pressure_initial_interior(triangulation.n_active_cells());
+
+   std::vector<double> pressure_initial_values (n_q_points);
+   std::vector<double> pressure_initial_values_face (n_face_q_points);
+
+   DoFHandler<dim> interior_dof_handler (triangulation);
+   interior_dof_handler.distribute_dofs (fe.base_element(dim));
+
+   std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
+   std::vector<types::global_dof_index> interior_local_dof_indices (fe.base_element(dim).dofs_per_cell);
+   typename DoFHandler<dim>::active_cell_iterator
+   cell = dof_handler.begin_active(),
+   endc = dof_handler.end(),
+   interior_cell = interior_dof_handler.begin_active();
+   // Here, just use Q0,Q0, for pressure part. If use higher
+   // order WG, need to change the definition of pressure.
+   // Now, this code only works for WG(Q0,Q0).
+   for (unsigned int index=0; cell!=endc; ++index, ++cell, ++interior_cell)
+     {
+	   fe_values.reinit (cell);
+	   projection_pressure_initial_interior(index) = 0;
+	   const double cell_area = cell->measure();
+	   for (unsigned int q=0; q<n_q_points; ++q)
+	     {
+		   pressure_initial
+		                 .value_list (fe_values.get_quadrature_points(),
+		                              pressure_initial_values);
+           projection_pressure_initial_interior(index) += pressure_initial_values[q]*
+        		                                          fe_values.JxW(q)/cell_area;
+	     }
+
+	   cell->get_dof_indices (local_dof_indices);
+	   interior_cell->get_dof_indices (interior_local_dof_indices);
+	   std::cout<<"index "<<index<<std::endl;
+	   for (unsigned int i=0; i<fe.base_element(1).dofs_per_cell; ++i)
+	     {
+//	       std::cout<<"i "<<i<<std::endl;
+//	       std::cout << fe.component_to_system_index(dim,i)<< std::endl;
+	       old_solution(local_dof_indices[fe.component_to_system_index(dim,i)])
+	      		        = projection_pressure_initial_interior(index);
+//	       =1;
+	      }
+// This part will be used to assign the projection of displacement into old_solution
+// If want to do in 3D, has to change add one more
+// "fe.component_to_system_index(2,i)".
+	   for (unsigned int i=0; i<fe.base_element(0).dofs_per_cell; ++i)
+	   	     {
+	   	       std::cout<<"i "<<i<<std::endl;
+	   	       std::cout << fe.component_to_system_index(0,i)<< std::endl;
+	   	       old_solution(local_dof_indices[fe.component_to_system_index(0,i)])
+//	   	      		        = projection_displacement_first_component;
+	   	       =1;
+	   	       old_solution(local_dof_indices[fe.component_to_system_index(1,i)])
+	   	    //	   	        = projection_displacement_seconds_component;
+	   	       =1;
+	   	      }
+//	   std::pair< unsigned int, types::global_dof_index >  tmp;
+//	   tmp = fe.system_to_block_index (9);
+//       std::cout<<"tmp.fist "<<tmp.first<<std::endl;
+//       std::cout<<"tmp.second "<<tmp.second<<std::endl;
+
+//       std::pair< unsigned int, types::global_dof_index >  tmp;
+//       tmp = fe.system_to_block_index (1);
+//       std::cout<<"tmp.fist "<<tmp.first<<std::endl;
+//       std::cout<<"tmp.second "<<tmp.second<<std::endl;
+//       old_solution.block(0)(tmp.second) = 1;
+//
+//       unsigned int tmpp = fe.component_to_block_index(3);
+//       std::cout<< "tmpp "<<tmpp <<std::endl;
+//
+//       for(unsigned int i = 0; i<13; ++i)
+//       std::cout<<"dol_solution "<<i << " "<<old_solution(i)<<std::endl;
+//
+//       std::pair< unsigned int, unsigned int > tmpp2;
+//       for(unsigned int i = 0; i<4; ++i)
+//       {
+//       tmpp2 = fe.component_to_base_index(i);
+//       std::cout<<"tmpp2 "<<tmpp2.first<<std::endl;
+//       std::cout<<"tmpp2 "<<tmpp2.second<<std::endl;
+//       }
+
+	   for (unsigned int face_n=0; face_n<GeometryInfo<dim>::faces_per_cell; ++face_n)
+	     {
+		   fe_face_values.reinit (cell,face_n);
+		   projection_pressure_initial_face(index,face_n) = 0;
+	       const double face_length = cell->face(face_n)->measure();
+	       for (unsigned int q=0; q<n_face_q_points; ++q)
+	         {
+	    	   pressure_initial
+	    	  		           .value_list (fe_face_values.get_quadrature_points(),
+	    	  		                        pressure_initial_values_face);
+               projection_pressure_initial_face(index,face_n) += pressure_initial_values_face[q]*
+            		                                             fe_face_values.JxW(q)/face_length;
+	         }
+	      }
+
+	  }
+   for(unsigned int i = 0; i<dof_handler.n_dofs(); ++i)
+   std::cout<< "old "<<old_solution(i)<<std::endl;
+
+//   for (unsigned int index=0;cell!=endc;++index,++cell)
+//   {
+//   std::cout<<projection_pressure_initial_interior(index)<<std::endl;
+//   }
+
+//   for (unsigned int index=0; cell!=endc; ++index, ++cell, ++interior_cell)
+//    {
+//       cell->get_dof_indices (local_dof_indices);
+//       interior_cell->get_dof_indices (interior_local_dof_indices);
+//
+//   	   for (unsigned int i=0; i<fe.base_element(dim).dofs_per_cell; ++i)
+//   	   {
+//   		   std::cout<<i<<std::endl;
+//   		   old_solution(local_dof_indices[fe.component_to_system_index(dim,i)])
+//   		      = projection_pressure_initial_interior(index);
+//   	   }
+//   	 }
 
    std::vector<Vector<double> > old_solution_values(n_q_points, Vector<double>(dim+2));
    std::vector<Vector<double> > present_solution_values(n_q_points, Vector<double>(dim+2));
 
-   std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
+
+//   std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
 
    const FEValuesExtractors::Vector displacements (0); //
    const FEValuesExtractors::Scalar pressure_interior (dim); // this is for pressure
    const FEValuesExtractors::Scalar pressure_face (dim+1); // maybe it is with this dim.
 
-   typename DoFHandler<dim>::active_cell_iterator
-   cell = dof_handler.begin_active(),
-   endc = dof_handler.end();
+//   typename DoFHandler<dim>::active_cell_iterator
+//   cell = dof_handler.begin_active(),
+//   endc = dof_handler.end();
 
    for (timestep_number=1, time=time_step; time<=0.25; time+=time_step, ++timestep_number)
      {
