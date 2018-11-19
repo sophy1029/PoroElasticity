@@ -126,21 +126,51 @@ void Coefficient<dim>::value_list(const std::vector<Point<dim>> &points,
 }
 
 // Exact solutions, u and p
-template <int dim>
-class DisplacementSolution : public Function<dim>
-{
-public:
-  DisplacementSolution () : Function<dim>(dim) {}
-  virtual void value (const Point<dim>   &p) const;
-};
+//template <int dim>
+//class DisplacementSolution : public Function<dim>
+//{
+//public:
+//  DisplacementSolution () : Function<dim>(dim) {}
+//  virtual void vector_value (const Point<dim>   &p,
+//		                     Vector<double> & value) const;
+//};
+//
+//template <int dim>
+//void DisplacementSolution<dim>::vector_value (const Point<dim>   &p,
+//		                                      Vector<double> & value) const
+//{
+//  Assert (value.size() == dim,
+//	          ExcDimensionMismatch (value.size(), dim));
+//
+////  value(0) = -1./(4*M_PI)*cos(2*M_PI*p[0])*sin(2*M_PI*p[1])*sin(2*M_PI*this->get_time());
+////  value(1) = -1./(4*M_PI)*sin(2*M_PI*p[0])*cos(2*M_PI*p[1])*sin(2*M_PI*this->get_time());
+//  value(0) = 1./(3*M_PI)*sin(M_PI/2*this->get_time())*sin(M_PI*p[0])*cos(M_PI*p[1])*cos(M_PI*p[2]);
+//  value(1) = 1./(3*M_PI)*sin(M_PI/2*this->get_time())*cos(M_PI*p[0])*sin(M_PI*p[1])*cos(M_PI*p[2]);
+//  value(2) = 1./(3*M_PI)*sin(M_PI/2*this->get_time())*cos(M_PI*p[0])*cos(M_PI*p[1])*sin(M_PI*p[2]);
+//}
 
 template <int dim>
-void DisplacementSolution<dim>::value (const Point<dim>   &p) const
-{
-  value(0) = -1./(4*M_PI)*cos(2*M_PI*p[0])*sin(2*M_PI*p[1])*sin(2*M_PI*this->get_time());
-  value(1) = -1./(4*M_PI)*sin(2*M_PI*p[0])*cos(2*M_PI*p[1])*sin(2*M_PI*this->get_time());
+  class DisplacementSolution : public TensorFunction<1,dim>
+  {
+  public:
+	DisplacementSolution () : TensorFunction<1,dim>() {}
 
-}
+    virtual Tensor<1,dim> vector_value (const Point<dim> &p) const;
+  };
+template <int dim>
+Tensor<1,dim>
+DisplacementSolution<dim>::vector_value (const Point<dim> &p) const
+  {
+	Tensor<1,dim> values;
+
+//    values(0) = -1./(4*M_PI)*cos(2*M_PI*p[0])*sin(2*M_PI*p[1])*sin(2*M_PI*this->get_time());
+//    values(1) = -1./(4*M_PI)*sin(2*M_PI*p[0])*cos(2*M_PI*p[1])*sin(2*M_PI*this->get_time());
+    values[0] = 1./(3*M_PI)*sin(M_PI/2*this->get_time())*sin(M_PI*p[0])*cos(M_PI*p[1])*cos(M_PI*p[2]);
+    values[1] = 1./(3*M_PI)*sin(M_PI/2*this->get_time())*cos(M_PI*p[0])*sin(M_PI*p[1])*cos(M_PI*p[2]);
+    values[2] = 1./(3*M_PI)*sin(M_PI/2*this->get_time())*cos(M_PI*p[0])*cos(M_PI*p[1])*sin(M_PI*p[2]);
+
+    return values;
+  }
 
 template <int dim>
 class PressureSolution : public Function<dim>
@@ -156,7 +186,8 @@ template <int dim>
 double PressureSolution<dim>::value(const Point<dim> &p, const unsigned int) const
 {
   double return_value = 0;
-  return_value        = sin(2*M_PI*p[0])*sin(2*M_PI*p[1])*sin(2*M_PI*this->get_time());
+//  return_value        = sin(2*M_PI*p[0])*sin(2*M_PI*p[1])*sin(2*M_PI*this->get_time());
+  return_value = sin(M_PI/2*this->get_time())*cos(M_PI*p[0])*cos(M_PI*p[1])*cos(M_PI*p[2]);
   return return_value;
 }
 
@@ -177,8 +208,9 @@ double FluidRightHandSide<dim>::value(const Point<dim> &p,
                                  const unsigned int /*component*/) const
 {
   double return_value = 0.0;
-  return_value        = 8*M_PI*M_PI*sin(2*M_PI*p[0])*sin(2*M_PI*p[1])*sin(2*M_PI*this->get_time())+
-		                2*M_PI*sin(2*M_PI*p[0])*sin(2*M_PI*p[1])*cos(2*M_PI*this->get_time());
+//  return_value        = 8*M_PI*M_PI*sin(2*M_PI*p[0])*sin(2*M_PI*p[1])*sin(2*M_PI*this->get_time())+
+//		                2*M_PI*sin(2*M_PI*p[0])*sin(2*M_PI*p[1])*cos(2*M_PI*this->get_time());
+  return_value = cos(M_PI*p[0])*cos(M_PI*p[1])*cos(M_PI*p[2])*(3*M_PI*M_PI*sin(M_PI/2*this->get_time()));
   return return_value;
 }
 
@@ -194,8 +226,11 @@ template <int dim>
 Tensor<1,dim> BodyRightHandSide<dim>::value (const Point<dim>   &p) const
 {
   Tensor<1,dim> return_value;
-  return_value[0] = -4*M_PI*cos(2*M_PI*p[0])*sin(2*M_PI*p[1])*sin(2*M_PI*this->get_time());
-  return_value[1] = -4*M_PI*sin(2*M_PI*p[0])*cos(2*M_PI*p[1])*sin(2*M_PI*this->get_time());
+//  return_value[0] = -4*M_PI*cos(2*M_PI*p[0])*sin(2*M_PI*p[1])*sin(2*M_PI*this->get_time());
+//  return_value[1] = -4*M_PI*sin(2*M_PI*p[0])*cos(2*M_PI*p[1])*sin(2*M_PI*this->get_time());
+  return_value[0] = 6*M_PI*sin(M_PI/2*this->get_time())*sin(M_PI*p[0])*cos(M_PI*p[1])*cos(M_PI*p[2]);
+  return_value[1] = 6*M_PI*sin(M_PI/2*this->get_time())*cos(M_PI*p[0])*sin(M_PI*p[1])*cos(M_PI*p[2]);
+  return_value[2] = 6*M_PI*sin(M_PI/2*this->get_time())*cos(M_PI*p[0])*cos(M_PI*p[1])*sin(M_PI*p[2]);
   return return_value;
 
 }
@@ -221,26 +256,54 @@ Tensor<1,dim> BodyRightHandSide<dim>::value (const Point<dim>   &p) const
 //    values(1) = -4*M_PI*sin(2*M_PI*p[0])*cos(2*M_PI*p[1])*sin(2*M_PI*this->get_time());
 //  }
 
+//// Displacement D.B.C., pressure is N.B.C., calculated later(?)
+//template <int dim>
+//  class DisplacementBoundary : public Function<dim>
+//  {
+//  public:
+//	DisplacementBoundary () : Function<dim>(dim) {}
+//
+//    virtual void vector_value (const Point<dim> &p,
+//                               Vector<double>   &value) const;
+//  };
+//template <int dim>
+//  void
+//  DisplacementBoundary<dim>::vector_value (const Point<dim> &p,
+//                                    Vector<double>   &values) const
+//  {
+//    Assert (values.size() == dim,
+//            ExcDimensionMismatch (values.size(), dim));
+//
+////    values(0) = -1./(4*M_PI)*cos(2*M_PI*p[0])*sin(2*M_PI*p[1])*sin(2*M_PI*this->get_time());
+////    values(1) = -1./(4*M_PI)*sin(2*M_PI*p[0])*cos(2*M_PI*p[1])*sin(2*M_PI*this->get_time());
+//    values(0) = 1./(3*M_PI)*sin(M_PI/2*this->get_time())*sin(M_PI*p[0])*cos(M_PI*p[1])*cos(M_PI*p[2]);
+//    values(1) = 1./(3*M_PI)*sin(M_PI/2*this->get_time())*cos(M_PI*p[0])*sin(M_PI*p[1])*cos(M_PI*p[2]);
+//    values(2) = 1./(3*M_PI)*sin(M_PI/2*this->get_time())*cos(M_PI*p[0])*cos(M_PI*p[1])*sin(M_PI*p[2]);
+//  }
+
 // Displacement D.B.C., pressure is N.B.C., calculated later(?)
 template <int dim>
-  class DisplacementBoundary : public Function<dim>
+  class DisplacementBoundary : public TensorFunction<1,dim>
   {
   public:
-	DisplacementBoundary () : Function<dim>(dim) {}
+	DisplacementBoundary () : TensorFunction<1,dim>() {}
 
-    virtual void vector_value (const Point<dim> &p,
-                               Vector<double>   &value) const;
+    virtual Tensor<1,dim> vector_value (const Point<dim> &p,
+                           Vector<double>   &value) const override;
   };
 template <int dim>
-  void
+Tensor<1,dim>
   DisplacementBoundary<dim>::vector_value (const Point<dim> &p,
                                     Vector<double>   &values) const
   {
     Assert (values.size() == dim,
             ExcDimensionMismatch (values.size(), dim));
 
-    values(0) = -1./(4*M_PI)*cos(2*M_PI*p[0])*sin(2*M_PI*p[1])*sin(2*M_PI*this->get_time());
-    values(1) = -1./(4*M_PI)*sin(2*M_PI*p[0])*cos(2*M_PI*p[1])*sin(2*M_PI*this->get_time());
+//    values(0) = -1./(4*M_PI)*cos(2*M_PI*p[0])*sin(2*M_PI*p[1])*sin(2*M_PI*this->get_time());
+//    values(1) = -1./(4*M_PI)*sin(2*M_PI*p[0])*cos(2*M_PI*p[1])*sin(2*M_PI*this->get_time());
+    values[0] = 1./(3*M_PI)*sin(M_PI/2*this->get_time())*sin(M_PI*p[0])*cos(M_PI*p[1])*cos(M_PI*p[2]);
+    values[1] = 1./(3*M_PI)*sin(M_PI/2*this->get_time())*cos(M_PI*p[0])*sin(M_PI*p[1])*cos(M_PI*p[2]);
+    values[2] = 1./(3*M_PI)*sin(M_PI/2*this->get_time())*cos(M_PI*p[0])*cos(M_PI*p[1])*sin(M_PI*p[2]);
   }
 
 // Initial values, u(0,x)=0 and p(0,x)=0
@@ -329,7 +392,7 @@ template <int dim>
 
    dof_handler (triangulation),
 
-   time_step (1./20) // what's time_step? need to set later, different from step-23
+   time_step (0.05) // what's time_step? need to set later, different from step-23
 
  {}
 
@@ -356,7 +419,8 @@ template <int dim>
    block_component[dim+1] = 2;
    DoFRenumbering::component_wise (dof_handler, block_component);
 
-   std::vector<types::global_dof_index> dofs_per_block (dim+1);
+//   std::vector<types::global_dof_index> dofs_per_block (dim+2);
+   std::vector<types::global_dof_index> dofs_per_block (3);
    DoFTools::count_dofs_per_block (dof_handler, dofs_per_block, block_component);
    const unsigned int n_u = dofs_per_block[0],
                       n_p_interior = dofs_per_block[1],
@@ -636,7 +700,6 @@ template <int dim>
        							                       phi_k_u*phi_l_u +
        							                       1*(phi_i_div*fe_values[pressure_interior].value (j,q)))*
        							                       fe_values.JxW(q);
-
        				            }
        			           }
        		         }
@@ -852,19 +915,23 @@ template <int dim>
    Vector<double>       local_rhs (dofs_per_cell);
 
    const InitialValuesPressure<dim> pressure_initial;
+
+//   DisplacementSolution<dim> displacement_exact_solution;
+//   displacement_exact_solution.set_time (time);
+
    Vector<double> old_solution_pressure_Interior_values(n_q_points);
    Vector<double> old_solution_pressure_Face_values(n_q_points);
-   FullMatrix<double> projection_pressure_initial_face(triangulation.n_active_cells(),4);
+   FullMatrix<double> projection_pressure_initial_face(triangulation.n_active_cells(),GeometryInfo<dim>::faces_per_cell);
    Vector<double> projection_pressure_initial_interior(triangulation.n_active_cells());
 
    std::vector<double> pressure_initial_values (n_q_points);
    std::vector<double> pressure_initial_values_face (n_face_q_points);
 
    DoFHandler<dim> interior_dof_handler (triangulation);
-   interior_dof_handler.distribute_dofs (fe.base_element(dim));
+   interior_dof_handler.distribute_dofs (fe.base_element(1));
 
    std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
-   std::vector<types::global_dof_index> interior_local_dof_indices (fe.base_element(dim).dofs_per_cell);
+   std::vector<types::global_dof_index> interior_local_dof_indices (fe.base_element(1).dofs_per_cell);
    typename DoFHandler<dim>::active_cell_iterator
    cell = dof_handler.begin_active(),
    endc = dof_handler.end(),
@@ -888,53 +955,29 @@ template <int dim>
 
 	   cell->get_dof_indices (local_dof_indices);
 	   interior_cell->get_dof_indices (interior_local_dof_indices);
-	   std::cout<<"index "<<index<<std::endl;
 	   for (unsigned int i=0; i<fe.base_element(1).dofs_per_cell; ++i)
 	     {
 //	       std::cout<<"i "<<i<<std::endl;
-//	       std::cout << fe.component_to_system_index(dim,i)<< std::endl;
-	       old_solution(local_dof_indices[fe.component_to_system_index(dim,i)])
+//	       std::cout << "fe "<<fe.component_to_system_index(dim,i)<< std::endl;
+	       old_solution(local_dof_indices[fe.component_to_system_index(dim,i)]) // this is dim or 1?
 	      		        = projection_pressure_initial_interior(index);
 //	       =1;
 	      }
+
 // This part will be used to assign the projection of displacement into old_solution
 // If want to do in 3D, has to change add one more
 // "fe.component_to_system_index(2,i)".
-	   for (unsigned int i=0; i<fe.base_element(0).dofs_per_cell; ++i)
-	   	     {
-	   	       std::cout<<"i "<<i<<std::endl;
-	   	       std::cout << fe.component_to_system_index(0,i)<< std::endl;
-	   	       old_solution(local_dof_indices[fe.component_to_system_index(0,i)])
-//	   	      		        = projection_displacement_first_component;
-	   	       =1;
-	   	       old_solution(local_dof_indices[fe.component_to_system_index(1,i)])
-	   	    //	   	        = projection_displacement_seconds_component;
-	   	       =1;
-	   	      }
-//	   std::pair< unsigned int, types::global_dof_index >  tmp;
-//	   tmp = fe.system_to_block_index (9);
-//       std::cout<<"tmp.fist "<<tmp.first<<std::endl;
-//       std::cout<<"tmp.second "<<tmp.second<<std::endl;
-
-//       std::pair< unsigned int, types::global_dof_index >  tmp;
-//       tmp = fe.system_to_block_index (1);
-//       std::cout<<"tmp.fist "<<tmp.first<<std::endl;
-//       std::cout<<"tmp.second "<<tmp.second<<std::endl;
-//       old_solution.block(0)(tmp.second) = 1;
-//
-//       unsigned int tmpp = fe.component_to_block_index(3);
-//       std::cout<< "tmpp "<<tmpp <<std::endl;
-//
-//       for(unsigned int i = 0; i<13; ++i)
-//       std::cout<<"dol_solution "<<i << " "<<old_solution(i)<<std::endl;
-//
-//       std::pair< unsigned int, unsigned int > tmpp2;
-//       for(unsigned int i = 0; i<4; ++i)
-//       {
-//       tmpp2 = fe.component_to_base_index(i);
-//       std::cout<<"tmpp2 "<<tmpp2.first<<std::endl;
-//       std::cout<<"tmpp2 "<<tmpp2.second<<std::endl;
-//       }
+//	   for (unsigned int i=0; i<fe.base_element(0).dofs_per_cell; ++i)
+//	   	     {
+//	   	       std::cout<<"i "<<i<<std::endl;
+//	   	       std::cout << fe.component_to_system_index(0,i)<< std::endl;
+//	   	       old_solution(local_dof_indices[fe.component_to_system_index(0,i)])
+////	   	      		        = projection_displacement_first_component;
+//	   	       =1;
+//	   	       old_solution(local_dof_indices[fe.component_to_system_index(1,i)])
+//	   	    //	   	        = projection_displacement_seconds_component;
+//	   	       =1;
+//	   	      }
 
 	   for (unsigned int face_n=0; face_n<GeometryInfo<dim>::faces_per_cell; ++face_n)
 	     {
@@ -952,8 +995,8 @@ template <int dim>
 	      }
 
 	  }
-   for(unsigned int i = 0; i<dof_handler.n_dofs(); ++i)
-   std::cout<< "old "<<old_solution(i)<<std::endl;
+//   for(unsigned int i = 0; i<dof_handler.n_dofs(); ++i)
+//   std::cout<< "old "<<old_solution(i)<<std::endl;
 
 //   for (unsigned int index=0;cell!=endc;++index,++cell)
 //   {
@@ -983,10 +1026,6 @@ template <int dim>
    const FEValuesExtractors::Scalar pressure_interior (dim); // this is for pressure
    const FEValuesExtractors::Scalar pressure_face (dim+1); // maybe it is with this dim.
 
-//   typename DoFHandler<dim>::active_cell_iterator
-//   cell = dof_handler.begin_active(),
-//   endc = dof_handler.end();
-
    for (timestep_number=1, time=time_step; time<=0.25; time+=time_step, ++timestep_number)
      {
        std::cout << "Time step " << timestep_number
@@ -997,31 +1036,34 @@ template <int dim>
    body_rhs_function.set_time (time);
    FluidRightHandSide<dim> fluid_rhs_function;
    fluid_rhs_function.set_time (time);
-   for (; cell!=endc; ++cell)
+   DisplacementSolution<dim> displacement_exact_solution;
+   displacement_exact_solution.set_time (time);
+
+   typename DoFHandler<dim>::active_cell_iterator
+   cell = dof_handler.begin_active(),
+   endc = dof_handler.end();
+   for (;cell!=endc; ++cell)
        {
         local_rhs = 0;
         fe_values.reinit (cell);
 
         fe_values.get_function_values (old_solution, old_solution_values);
-        fe_values.get_function_values (solution, present_solution_values);
+//        fe_values.get_function_values (solution, present_solution_values);
 
         for (unsigned int q=0; q<n_q_points; ++q)
         {
         	const double fluid_rhs_value = fluid_rhs_function.value(fe_values.quadrature_point (q));
         	const Tensor<1,dim> body_rhs_value = body_rhs_function.value(fe_values.quadrature_point (q));
-        	std::cout<< "fe_values.quadrature_point "   << fe_values.quadrature_point (q) <<std::endl;
-//        	std::cout<< "fluid_rhs_value "   << fluid_rhs_value <<std::endl;
           for (unsigned int i=0; i<dofs_per_cell; ++i)
             {
               const double old_pressure_interior = old_solution_values[q](dim);
-
               Tensor<1,dim> old_displacment;
               for (unsigned int d=0; d<dim; ++d)
             	  old_displacment[d] = old_solution_values[q](d);
 
-              Tensor<1,dim> present_displacment;
-              for (unsigned int d=0; d<dim; ++d)
-                present_displacment[d] = present_solution_values[q](d);
+//              Tensor<1,dim> present_displacment;
+//              for (unsigned int d=0; d<dim; ++d)
+//                present_displacment[d] = present_solution_values[q](d);
 
               const Tensor<1,dim> phi_i_v = fe_values[displacements].value (i, q);
               const double phi_i_q = fe_values[pressure_interior].value(i,q);
@@ -1035,6 +1077,108 @@ template <int dim>
         cell->get_dof_indices (local_dof_indices);
         for (unsigned int i=0; i<dofs_per_cell; ++i)
         system_rhs(local_dof_indices[i]) += local_rhs(i);
+
+        // calculate and assign displacement D.B.C, on nodes
+        Point<dim> displ_DBC_vertex_coords;
+//        Vector<double> displ_DBC_values(dim);
+//        for (unsigned int face_number=0; face_number<GeometryInfo<dim>::faces_per_cell; ++face_number)
+//          if (cell->face(face_number)->at_boundary())
+//           {
+//             for(unsigned int v = 0; v<GeometryInfo<dim>::vertices_per_face; ++v)
+//             {            	 std::cout<<"vertices "<<std::endl;
+//             displ_DBC_vertex_coords = cell->face(face_number)->vertex(v);
+////             std::cout<< "displ_DBC_vertex_coords "<<displ_DBC_vertex_coords<<std::endl;
+//             displacement_exact_solution.vector_value(displ_DBC_vertex_coords,displ_DBC_values);
+////             std::cout<< "dis "<<displ_DBC_values(0)<<std::endl;
+//             // calculate displacement values at these vertices, assign into system_rhs
+//             for (unsigned int i=0; i<fe.base_element(0).dofs_per_cell; ++i)
+//               {
+//                 system_rhs(local_dof_indices[fe.component_to_system_index(0,i)]) =
+//            		                          displ_DBC_values(0);
+//                 system_rhs(local_dof_indices[fe.component_to_system_index(1,i)]) =
+//                		                      displ_DBC_values(1);
+//                }
+//              }
+//            }
+
+        // calculate displ. DBC. on faces, this part only needed in BR1.
+        // followings are used for displ. D.B.C.
+        FullMatrix<double> displ_DBC_FaceVert_values(GeometryInfo<dim>::vertices_per_face, dim);
+        Point<dim> quadrature_point;   // error
+        Tensor<1,dim> displ_DBC_Quad_values;
+        Tensor<1,dim>  Interpolation;
+        Tensor<1,dim>  residual;
+        double Integral_1;
+        double Integral_2;
+        for (unsigned int face_number=0; face_number<GeometryInfo<dim>::faces_per_cell; ++face_number)
+          if (cell->face(face_number)->at_boundary())
+           {
+             for(unsigned int v = 0; v<GeometryInfo<dim>::vertices_per_face; ++v)
+                {
+//            	  displ_DBC_vertex_coords = 0;
+//            	  displ_DBC_face_values = 0;
+            	  displ_DBC_vertex_coords = cell->face(face_number)->vertex(v);
+            	  displ_DBC_FaceVert_values[v][0] = displacement_exact_solution.vector_value(displ_DBC_vertex_coords)[0];
+            	  displ_DBC_FaceVert_values[v][1] = displacement_exact_solution.vector_value(displ_DBC_vertex_coords)[1];
+            	  displ_DBC_FaceVert_values[v][2] = displacement_exact_solution.vector_value(displ_DBC_vertex_coords)[2];
+                std::cout<<displ_DBC_vertex_coords[0]<<" "<<displ_DBC_vertex_coords[1]<<" "<<displ_DBC_vertex_coords[2]<<std::endl;
+                }
+             // calculate displacement values at these 4 vertices, assign into system_rhs
+             for(unsigned int v = 0; v<GeometryInfo<dim>::vertices_per_face; ++v)
+               {
+                  for (unsigned int q=0; q<n_face_q_points; ++q)
+                  {
+                	  const Tensor<1,dim> normal = fe_face_values.normal_vector(q);
+                	  Interpolation = 0;
+                	  displ_DBC_Quad_values = 0;
+//                	  quadrature_point = 0;
+                	  quadrature_point = quadrature_formula.point(q);
+                	  const double xhat = quadrature_point[0];
+                	  const double yhat = quadrature_point[1];
+//                	  const double zhat = quadrature_point[2];
+                	  // make sure the orders are correct!
+                	  Interpolation[0] = (1-xhat)*yhat*displ_DBC_FaceVert_values[2][0]
+                	                     + (1-xhat)*(1-yhat)*displ_DBC_FaceVert_values[0][0]
+                	                     + xhat*(1-yhat)*displ_DBC_FaceVert_values[1][0]
+                	                     + xhat*yhat*displ_DBC_FaceVert_values[3][0];
+                	  Interpolation[1] = (1-xhat)*yhat*displ_DBC_FaceVert_values[2][1]
+                	                    + (1-xhat)*(1-yhat)*displ_DBC_FaceVert_values[0][1]
+                	                    + xhat*(1-yhat)*displ_DBC_FaceVert_values[1][1]
+                	                    + xhat*yhat*displ_DBC_FaceVert_values[3][1];
+                	  Interpolation[2] = (1-xhat)*yhat*displ_DBC_FaceVert_values[2][2]
+                	                    + (1-xhat)*(1-yhat)*displ_DBC_FaceVert_values[0][2]
+                	                  	+ xhat*(1-yhat)*displ_DBC_FaceVert_values[1][2]
+                	                  	+ xhat*yhat*displ_DBC_FaceVert_values[3][2];
+
+                	  displ_DBC_Quad_values[0] = displacement_exact_solution.vector_value(quadrature_point)[0];
+                	  displ_DBC_Quad_values[1] = displacement_exact_solution.vector_value(quadrature_point)[1];
+                	  displ_DBC_Quad_values[2] = displacement_exact_solution.vector_value(quadrature_point)[2];
+                	  residual = displ_DBC_Quad_values - Interpolation;
+                	  Integral_1 += (residual*normal*fe_face_values.JxW (q));
+                      Integral_2 += (1-xhat)*xhat*(1-yhat)*yhat*fe_face_values.JxW (q);
+                  }
+               }
+// Need to figure out how the BR1 is implemented, where are the nodal bases and edge bases.
+//                  for (unsigned int i=0; i<fe.base_element(0).dofs_per_cell; ++i)
+//                    {
+//                      system_rhs(local_dof_indices[fe.component_to_system_index(0,i)]) =
+//                    		                                             Integral_1/Integral_2;
+//                    }
+                 }
+           }
+
+
+        //	   for (unsigned int i=0; i<fe.base_element(0).dofs_per_cell; ++i)
+        //	   	     {
+        //	   	       std::cout<<"i "<<i<<std::endl;
+        //	   	       std::cout << fe.component_to_system_index(0,i)<< std::endl;
+        //	   	       old_solution(local_dof_indices[fe.component_to_system_index(0,i)])
+        ////	   	      		        = projection_displacement_first_component;
+        //	   	       =1;
+        //	   	       old_solution(local_dof_indices[fe.component_to_system_index(1,i)])
+        //	   	    //	   	        = projection_displacement_seconds_component;
+        //	   	       =1;
+        //	   	      }
        }
 //   for (unsigned int i=0; i<13; ++i)
 //   std::cout<<"system_rhs "<< system_rhs(i)<<std::endl;
@@ -1048,6 +1192,18 @@ template <int dim>
 
 
    // Next, set Dirichelet boundary conditions
+//   typename DoFHandler<dim>::active_cell_iterator
+//   cell = dof_handler.begin_active(),
+//   endc = dof_handler.end();
+//   for (;cell!=endc; ++cell)
+//   {
+//	   for (unsigned int face_number=0; face_number<GeometryInfo<dim>::faces_per_cell; ++face_number)
+//		if (cell->face(face_number)->at_boundary())
+//		{
+//		  for(unsigned int v = 0; v<GeometryInfo<dim>::vertices_per_face; ++v)
+//			  std::cout<<cell->face(face_number)->vertex(v)<<std::endl;
+//		}
+//   }
 
 
    solve_time_step();
@@ -1057,14 +1213,13 @@ template <int dim>
    old_solution = solution;
 
        }
- }
  // @sect3{The <code>main</code> function}
 
  // This is the main function. We can change the dimension here to run in 3d.
  int main ()
  {
-   deallog.depth_console (2);
-   PoroElasBR1WG<2> PoroElasBR1WGTest;
+   deallog.depth_console (3);
+   PoroElasBR1WG<3> PoroElasBR1WGTest;
    PoroElasBR1WGTest.run ();
 
    return 0;
