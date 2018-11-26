@@ -28,6 +28,7 @@
 #include <deal.II/grid/grid_generator.h>
 #include <deal.II/grid/tria_accessor.h>
 #include <deal.II/grid/tria_iterator.h>
+#include <deal.II/grid/grid_tools.h>
 #include <deal.II/dofs/dof_handler.h>
 #include <deal.II/dofs/dof_accessor.h>
 #include <deal.II/dofs/dof_renumbering.h>
@@ -68,6 +69,7 @@ private:
   void make_grid_and_dofs ();
   void assemble_system ();
   void solve_time_step();
+  void output_results () const;
 
   Triangulation<dim>   triangulation;
 
@@ -392,7 +394,8 @@ template <int dim>
 
    dof_handler (triangulation),
 
-   time_step (0.05) // what's time_step? need to set later, different from step-23
+   time_step (0.05), // this is delta t
+   timestep_number (5) // number of time steps
 
  {}
 
@@ -866,6 +869,37 @@ template <int dim>
 	 A_direct.vmult (solution, system_rhs);
  }
 
+template <int dim>
+void PoroElasBR1WG<dim>::output_results() const
+{
+
+	std::vector<std::string> solution_names;
+//	solution_names.push_back ("u"); // note, check how BR1 is defined, do we need separate components?
+	solution_names.push_back ("u_x_direction");
+	solution_names.push_back ("u_y_direction");
+	solution_names.push_back ("u_z_direction");
+    solution_names.push_back ("p_interior");
+    solution_names.push_back ("p_edge");
+
+//	    default:
+//	     Assert (false, ExcNotImplemented());
+
+	DataOut<dim> data_out;
+    data_out.attach_dof_handler (dof_handler);
+    data_out.add_data_vector (solution, solution_names);
+
+    data_out.build_patches (fe.degree+1);
+
+    // check what's "Utilities::int_to_string(timestep_number,4)", how to use
+    std::ostringstream filename;
+    filename << "solution-"
+             << Utilities::int_to_string(timestep_number,4)
+	         << ".vtk";
+
+   std::ofstream output (filename.str().c_str());
+   data_out.write_vtk (output);
+   }
+
  // @sect4{WGDarcyEquation::run}
 
  // This is the final function of the main class. It calls the other functions of our class.
@@ -1208,7 +1242,7 @@ template <int dim>
 
    solve_time_step();
 
-   // output_results ();
+   output_results ();
 
    old_solution = solution;
 
