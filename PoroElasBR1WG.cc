@@ -395,7 +395,7 @@ template <int dim>
    dof_handler (triangulation),
 
    time_step (0.05), // this is delta t
-   timestep_number (5) // number of time steps
+   timestep_number (1) // start from the first timestep
 
  {}
 
@@ -443,9 +443,9 @@ template <int dim>
              << dof_handler_rt.n_dofs()
              << std::endl;
 
-   std::cout<<fe.base_element(0).dofs_per_cell<<std::endl;
-   std::cout<<fe.base_element(1).dofs_per_cell<<std::endl;
-   std::cout<<fe.base_element(2).dofs_per_cell<<std::endl;
+//   std::cout<<fe.base_element(0).dofs_per_cell<<std::endl;
+//   std::cout<<fe.base_element(1).dofs_per_cell<<std::endl;
+//   std::cout<<fe.base_element(2).dofs_per_cell<<std::endl;
 
    BlockDynamicSparsityPattern dsp(2, 2);
    dsp.block(0, 0).reinit (n_u, n_u);
@@ -890,10 +890,9 @@ void PoroElasBR1WG<dim>::output_results() const
 
     data_out.build_patches (fe.degree+1);
 
-    // check what's "Utilities::int_to_string(timestep_number,4)", how to use
     std::ostringstream filename;
     filename << "solution-"
-             << Utilities::int_to_string(timestep_number,4)
+             << Utilities::int_to_string(timestep_number,3)
 	         << ".vtk";
 
    std::ofstream output (filename.str().c_str());
@@ -998,6 +997,7 @@ void PoroElasBR1WG<dim>::output_results() const
 //	       =1;
 	      }
 
+
 // This part will be used to assign the projection of displacement into old_solution
 // If want to do in 3D, has to change add one more
 // "fe.component_to_system_index(2,i)".
@@ -1058,7 +1058,7 @@ void PoroElasBR1WG<dim>::output_results() const
 
    const FEValuesExtractors::Vector displacements (0); //
    const FEValuesExtractors::Scalar pressure_interior (dim); // this is for pressure
-   const FEValuesExtractors::Scalar pressure_face (dim+1); // maybe it is with this dim.
+   const FEValuesExtractors::Scalar pressure_face (dim+1); //
 
    for (timestep_number=1, time=time_step; time<=0.25; time+=time_step, ++timestep_number)
      {
@@ -1082,7 +1082,6 @@ void PoroElasBR1WG<dim>::output_results() const
         fe_values.reinit (cell);
 
         fe_values.get_function_values (old_solution, old_solution_values);
-//        fe_values.get_function_values (solution, present_solution_values);
 
         for (unsigned int q=0; q<n_q_points; ++q)
         {
@@ -1094,10 +1093,6 @@ void PoroElasBR1WG<dim>::output_results() const
               Tensor<1,dim> old_displacment;
               for (unsigned int d=0; d<dim; ++d)
             	  old_displacment[d] = old_solution_values[q](d);
-
-//              Tensor<1,dim> present_displacment;
-//              for (unsigned int d=0; d<dim; ++d)
-//                present_displacment[d] = present_solution_values[q](d);
 
               const Tensor<1,dim> phi_i_v = fe_values[displacements].value (i, q);
               const double phi_i_q = fe_values[pressure_interior].value(i,q);
@@ -1114,91 +1109,94 @@ void PoroElasBR1WG<dim>::output_results() const
 
         // calculate and assign displacement D.B.C, on nodes
         Point<dim> displ_DBC_vertex_coords;
-//        Vector<double> displ_DBC_values(dim);
-//        for (unsigned int face_number=0; face_number<GeometryInfo<dim>::faces_per_cell; ++face_number)
-//          if (cell->face(face_number)->at_boundary())
-//           {
-//             for(unsigned int v = 0; v<GeometryInfo<dim>::vertices_per_face; ++v)
-//             {            	 std::cout<<"vertices "<<std::endl;
-//             displ_DBC_vertex_coords = cell->face(face_number)->vertex(v);
-////             std::cout<< "displ_DBC_vertex_coords "<<displ_DBC_vertex_coords<<std::endl;
-//             displacement_exact_solution.vector_value(displ_DBC_vertex_coords,displ_DBC_values);
-////             std::cout<< "dis "<<displ_DBC_values(0)<<std::endl;
-//             // calculate displacement values at these vertices, assign into system_rhs
-//             for (unsigned int i=0; i<fe.base_element(0).dofs_per_cell; ++i)
-//               {
-//                 system_rhs(local_dof_indices[fe.component_to_system_index(0,i)]) =
-//            		                          displ_DBC_values(0);
-//                 system_rhs(local_dof_indices[fe.component_to_system_index(1,i)]) =
-//                		                      displ_DBC_values(1);
-//                }
-//              }
-//            }
-
-        // calculate displ. DBC. on faces, this part only needed in BR1.
-        // followings are used for displ. D.B.C.
-        FullMatrix<double> displ_DBC_FaceVert_values(GeometryInfo<dim>::vertices_per_face, dim);
-        Point<dim> quadrature_point;   // error
-        Tensor<1,dim> displ_DBC_Quad_values;
-        Tensor<1,dim>  Interpolation;
-        Tensor<1,dim>  residual;
-        double Integral_1;
-        double Integral_2;
+        Vector<double> displ_DBC_values(dim);
         for (unsigned int face_number=0; face_number<GeometryInfo<dim>::faces_per_cell; ++face_number)
           if (cell->face(face_number)->at_boundary())
            {
              for(unsigned int v = 0; v<GeometryInfo<dim>::vertices_per_face; ++v)
-                {
-//            	  displ_DBC_vertex_coords = 0;
-//            	  displ_DBC_face_values = 0;
-            	  displ_DBC_vertex_coords = cell->face(face_number)->vertex(v);
-            	  displ_DBC_FaceVert_values[v][0] = displacement_exact_solution.vector_value(displ_DBC_vertex_coords)[0];
-            	  displ_DBC_FaceVert_values[v][1] = displacement_exact_solution.vector_value(displ_DBC_vertex_coords)[1];
-            	  displ_DBC_FaceVert_values[v][2] = displacement_exact_solution.vector_value(displ_DBC_vertex_coords)[2];
-                std::cout<<displ_DBC_vertex_coords[0]<<" "<<displ_DBC_vertex_coords[1]<<" "<<displ_DBC_vertex_coords[2]<<std::endl;
-                }
-             // calculate displacement values at these 4 vertices, assign into system_rhs
-             for(unsigned int v = 0; v<GeometryInfo<dim>::vertices_per_face; ++v)
-               {
-                  for (unsigned int q=0; q<n_face_q_points; ++q)
-                  {
-                	  const Tensor<1,dim> normal = fe_face_values.normal_vector(q);
-                	  Interpolation = 0;
-                	  displ_DBC_Quad_values = 0;
-//                	  quadrature_point = 0;
-                	  quadrature_point = quadrature_formula.point(q);
-                	  const double xhat = quadrature_point[0];
-                	  const double yhat = quadrature_point[1];
-//                	  const double zhat = quadrature_point[2];
-                	  // make sure the orders are correct!
-                	  Interpolation[0] = (1-xhat)*yhat*displ_DBC_FaceVert_values[2][0]
-                	                     + (1-xhat)*(1-yhat)*displ_DBC_FaceVert_values[0][0]
-                	                     + xhat*(1-yhat)*displ_DBC_FaceVert_values[1][0]
-                	                     + xhat*yhat*displ_DBC_FaceVert_values[3][0];
-                	  Interpolation[1] = (1-xhat)*yhat*displ_DBC_FaceVert_values[2][1]
-                	                    + (1-xhat)*(1-yhat)*displ_DBC_FaceVert_values[0][1]
-                	                    + xhat*(1-yhat)*displ_DBC_FaceVert_values[1][1]
-                	                    + xhat*yhat*displ_DBC_FaceVert_values[3][1];
-                	  Interpolation[2] = (1-xhat)*yhat*displ_DBC_FaceVert_values[2][2]
-                	                    + (1-xhat)*(1-yhat)*displ_DBC_FaceVert_values[0][2]
-                	                  	+ xhat*(1-yhat)*displ_DBC_FaceVert_values[1][2]
-                	                  	+ xhat*yhat*displ_DBC_FaceVert_values[3][2];
+             {
+             displ_DBC_vertex_coords = cell->face(face_number)->vertex(v);
+             displacement_exact_solution.vector_value(displ_DBC_vertex_coords);
 
-                	  displ_DBC_Quad_values[0] = displacement_exact_solution.vector_value(quadrature_point)[0];
-                	  displ_DBC_Quad_values[1] = displacement_exact_solution.vector_value(quadrature_point)[1];
-                	  displ_DBC_Quad_values[2] = displacement_exact_solution.vector_value(quadrature_point)[2];
-                	  residual = displ_DBC_Quad_values - Interpolation;
-                	  Integral_1 += (residual*normal*fe_face_values.JxW (q));
-                      Integral_2 += (1-xhat)*xhat*(1-yhat)*yhat*fe_face_values.JxW (q);
-                  }
-               }
-// Need to figure out how the BR1 is implemented, where are the nodal bases and edge bases.
-//                  for (unsigned int i=0; i<fe.base_element(0).dofs_per_cell; ++i)
-//                    {
-//                      system_rhs(local_dof_indices[fe.component_to_system_index(0,i)]) =
-//                    		                                             Integral_1/Integral_2;
-//                    }
-                 }
+             // calculate displacement values at these vertices, assign into system_rhs
+             for (unsigned int i=0; i<fe.base_element(0).dofs_per_cell; ++i)
+               {
+                 system_rhs(local_dof_indices[fe.component_to_system_index(0,i)]) =
+                		 displacement_exact_solution.vector_value(displ_DBC_vertex_coords)[0];
+                 system_rhs(local_dof_indices[fe.component_to_system_index(1,i)]) =
+                		 displacement_exact_solution.vector_value(displ_DBC_vertex_coords)[1];
+                 system_rhs(local_dof_indices[fe.component_to_system_index(2,i)]) =
+                         displacement_exact_solution.vector_value(displ_DBC_vertex_coords)[2];
+                }
+              }
+            }
+
+        // calculate displ. DBC. on faces, this part only needed in BR1.
+        // followings are used for displ. D.B.C.
+//        FullMatrix<double> displ_DBC_FaceVert_values(GeometryInfo<dim>::vertices_per_face, dim);
+//        Point<dim> quadrature_point;   // error
+//        Tensor<1,dim> displ_DBC_Quad_values;
+//        Tensor<1,dim>  Interpolation;
+//        Tensor<1,dim>  residual;
+//        double Integral_1;
+//        double Integral_2;
+//        for (unsigned int face_number=0; face_number<GeometryInfo<dim>::faces_per_cell; ++face_number)
+//          if (cell->face(face_number)->at_boundary())
+//           {
+//             for(unsigned int v = 0; v<GeometryInfo<dim>::vertices_per_face; ++v)
+//                {
+////            	  displ_DBC_vertex_coords = 0;
+////            	  displ_DBC_face_values = 0;
+//            	  displ_DBC_vertex_coords = cell->face(face_number)->vertex(v);
+//            	  displ_DBC_FaceVert_values[v][0] = displacement_exact_solution.vector_value(displ_DBC_vertex_coords)[0];
+//            	  displ_DBC_FaceVert_values[v][1] = displacement_exact_solution.vector_value(displ_DBC_vertex_coords)[1];
+//            	  displ_DBC_FaceVert_values[v][2] = displacement_exact_solution.vector_value(displ_DBC_vertex_coords)[2];
+////                std::cout<<displ_DBC_vertex_coords[0]<<" "<<displ_DBC_vertex_coords[1]<<" "<<displ_DBC_vertex_coords[2]<<std::endl;
+//                }
+//             // calculate displacement values at these 4 vertices, assign into system_rhs
+//             for(unsigned int v = 0; v<GeometryInfo<dim>::vertices_per_face; ++v)
+//               {
+//                  for (unsigned int q=0; q<n_face_q_points; ++q)
+//                  {
+//                	  const Tensor<1,dim> normal = fe_face_values.normal_vector(q);
+//                	  Interpolation = 0;
+//                	  displ_DBC_Quad_values = 0;
+////                	  quadrature_point = 0;
+//                	  quadrature_point = quadrature_formula.point(q);
+//                	  const double xhat = quadrature_point[0];
+//                	  const double yhat = quadrature_point[1];
+////                	  const double zhat = quadrature_point[2];
+//                	  // make sure the orders are correct!
+//                	  Interpolation[0] = (1-xhat)*yhat*displ_DBC_FaceVert_values[2][0]
+//                	                     + (1-xhat)*(1-yhat)*displ_DBC_FaceVert_values[0][0]
+//                	                     + xhat*(1-yhat)*displ_DBC_FaceVert_values[1][0]
+//                	                     + xhat*yhat*displ_DBC_FaceVert_values[3][0];
+//                	  Interpolation[1] = (1-xhat)*yhat*displ_DBC_FaceVert_values[2][1]
+//                	                    + (1-xhat)*(1-yhat)*displ_DBC_FaceVert_values[0][1]
+//                	                    + xhat*(1-yhat)*displ_DBC_FaceVert_values[1][1]
+//                	                    + xhat*yhat*displ_DBC_FaceVert_values[3][1];
+//                	  Interpolation[2] = (1-xhat)*yhat*displ_DBC_FaceVert_values[2][2]
+//                	                    + (1-xhat)*(1-yhat)*displ_DBC_FaceVert_values[0][2]
+//                	                  	+ xhat*(1-yhat)*displ_DBC_FaceVert_values[1][2]
+//                	                  	+ xhat*yhat*displ_DBC_FaceVert_values[3][2];
+//
+//                	  displ_DBC_Quad_values[0] = displacement_exact_solution.vector_value(quadrature_point)[0];
+//                	  displ_DBC_Quad_values[1] = displacement_exact_solution.vector_value(quadrature_point)[1];
+//                	  displ_DBC_Quad_values[2] = displacement_exact_solution.vector_value(quadrature_point)[2];
+//                	  residual = displ_DBC_Quad_values - Interpolation;
+//                	  Integral_1 += (residual*normal*fe_face_values.JxW (q));
+//                      Integral_2 += (1-xhat)*xhat*(1-yhat)*yhat*fe_face_values.JxW (q);
+//                  }
+//               }
+//// Need to figure out how the BR1 is implemented, where are the nodal bases and edge bases.
+////                  for (unsigned int i=0; i<fe.base_element(0).dofs_per_cell; ++i)
+////                    {
+////                      system_rhs(local_dof_indices[fe.component_to_system_index(0,i)]) =
+////                    		                                             Integral_1/Integral_2;
+////                    }
+//                 }
+
+
            }
 
 
@@ -1213,7 +1211,7 @@ void PoroElasBR1WG<dim>::output_results() const
         //	   	    //	   	        = projection_displacement_seconds_component;
         //	   	       =1;
         //	   	      }
-       }
+
 //   for (unsigned int i=0; i<13; ++i)
 //   std::cout<<"system_rhs "<< system_rhs(i)<<std::endl;
 
@@ -1245,8 +1243,9 @@ void PoroElasBR1WG<dim>::output_results() const
    output_results ();
 
    old_solution = solution;
+     }
 
-       }
+}
  // @sect3{The <code>main</code> function}
 
  // This is the main function. We can change the dimension here to run in 3d.
